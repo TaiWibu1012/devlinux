@@ -1,8 +1,7 @@
 #!/bin/bash
 
 if [ $# -lt 2 ]; then
-    echo "Error: Thiếu tham số!"
-    echo "Cách sử dụng: $0 <tên> <tuổi>"
+    echo "Error: Thieu tham so " 
     exit 1
 fi
 

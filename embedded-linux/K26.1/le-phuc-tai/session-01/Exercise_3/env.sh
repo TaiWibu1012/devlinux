@@ -14,4 +14,4 @@ echo ""
 
 echo "=== 3. Tổng số lượng biến môi trường hệ thống ==="
 echo -n "Tổng số biến: "
-printenv | wc -l
+printenv | wc -l  
