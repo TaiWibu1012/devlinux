@@ -17,9 +17,6 @@
 #define DEFAULT_ALARM_HOUR      7
 #define DEFAULT_ALARM_MINUTE    0
 
-/* Track last triggered minute to prevent repeated firing in the same minute */
-static int s_last_triggered_minute = -1;
-
 int alarm_manager_load_config(const char *config_path, alarm_config_t *out_cfg)
 {
     if (!config_path || !out_cfg)
@@ -100,32 +97,32 @@ void alarm_manager_check(const struct tm *tm_info)
     if (!tm_info) return;
 
     pthread_mutex_lock(&g_state_mutex);
-    alarm_config_t cfg = g_system_state.alarm_config;
-    bool is_currently_ringing = g_system_state.alarm_ringing;
-    pthread_mutex_unlock(&g_state_mutex);
 
-    /* Reset trigger tracker when minute changes */
-    if (tm_info->tm_min != s_last_triggered_minute) {
-        s_last_triggered_minute = -1;
+    /* Reset trigger tracker when minute advances */
+    if (tm_info->tm_min != g_system_state.last_triggered_minute) {
+        g_system_state.last_triggered_minute = -1;
     }
 
+    alarm_config_t cfg = g_system_state.alarm_config;
+    bool is_currently_ringing = g_system_state.alarm_ringing;
+
     if (!cfg.enabled || is_currently_ringing) {
+        pthread_mutex_unlock(&g_state_mutex);
         return;
     }
 
     /* Check if current hour & minute match alarm schedule */
     if (tm_info->tm_hour == cfg.hour && tm_info->tm_min == cfg.minute) {
-        if (s_last_triggered_minute != tm_info->tm_min) {
-            s_last_triggered_minute = tm_info->tm_min;
-
-            pthread_mutex_lock(&g_state_mutex);
+        if (g_system_state.last_triggered_minute != tm_info->tm_min) {
+            g_system_state.last_triggered_minute = tm_info->tm_min;
             g_system_state.alarm_ringing = true;
-            pthread_mutex_unlock(&g_state_mutex);
 
             printf("[alarm_manager] ALARM TRIGGERED! Time: %02d:%02d:00\n",
                    tm_info->tm_hour, tm_info->tm_min);
         }
     }
+
+    pthread_mutex_unlock(&g_state_mutex);
 }
 
 void *buzzer_thread_func(void *arg)

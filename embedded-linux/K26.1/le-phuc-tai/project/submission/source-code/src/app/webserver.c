@@ -74,13 +74,20 @@ static void url_decode(char *dst, const char *src, size_t dst_size)
         if (*src == '+') {
             dst[d_idx++] = ' ';
             src++;
-        } else if (*src == '%' && src[1] && src[2]) {
-            int h1 = hex_to_int(src[1]);
-            int h2 = hex_to_int(src[2]);
-            if (h1 >= 0 && h2 >= 0) {
-                dst[d_idx++] = (char)((h1 << 4) | h2);
-                src += 3;
+        } else if (*src == '%') {
+            /* Ensure there are at least two characters after % before attempting to parse */
+            if (src[1] != '\0' && src[2] != '\0') {
+                int h1 = hex_to_int(src[1]);
+                int h2 = hex_to_int(src[2]);
+                if (h1 >= 0 && h2 >= 0) {
+                    dst[d_idx++] = (char)((h1 << 4) | h2);
+                    src += 3;
+                } else {
+                    /* Invalid hex escape sequence, copy literally */
+                    dst[d_idx++] = *src++;
+                }
             } else {
+                /* Incomplete % escape sequence at string end, copy literally */
                 dst[d_idx++] = *src++;
             }
         } else {

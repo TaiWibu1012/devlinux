@@ -50,6 +50,7 @@ typedef struct {
     screen_mode_t   current_screen;
     net_mode_t      net_mode;
     bool            alarm_ringing;
+    int             last_triggered_minute; /* Track last triggered minute to prevent repeated firing in the same minute */
     alarm_config_t  alarm_config;
     weather_data_t  weather_data;
     wifi_creds_t    pending_wifi;

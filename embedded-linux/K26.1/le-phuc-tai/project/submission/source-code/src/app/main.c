@@ -38,12 +38,25 @@ static pthread_t s_webserver_tid;
 static pthread_t s_buzzer_tid;
 static pthread_t s_smartconfig_tid;
 
+static void sigusr1_handler(int sig)
+{
+    (void)sig;
+    /* No-op handler: used to interrupt blocking system calls (poll/read) for instant shutdown */
+}
+
 static void signal_handler(int sig)
 {
     printf("\n[main] Caught signal %d. Shutting down system cleanly...\n", sig);
     pthread_mutex_lock(&g_state_mutex);
     g_system_state.running = false;
     pthread_mutex_unlock(&g_state_mutex);
+
+    /* Immediately interrupt blocking poll/read calls in all worker threads */
+    if (s_clock_tid) pthread_kill(s_clock_tid, SIGUSR1);
+    if (s_weather_tid) pthread_kill(s_weather_tid, SIGUSR1);
+    if (s_webserver_tid) pthread_kill(s_webserver_tid, SIGUSR1);
+    if (s_buzzer_tid) pthread_kill(s_buzzer_tid, SIGUSR1);
+    if (s_smartconfig_tid) pthread_kill(s_smartconfig_tid, SIGUSR1);
 }
 
 /* Kiểm tra xem file wpa_supplicant.conf đã lưu cấu hình mạng từ trước hay chưa */
@@ -69,6 +82,7 @@ void system_state_init(void)
     pthread_mutex_lock(&g_state_mutex);
     g_system_state.current_screen = SCREEN_CLOCK;
     g_system_state.alarm_ringing = false;
+    g_system_state.last_triggered_minute = -1;
     g_system_state.force_weather_fetch = false;
     g_system_state.running = true;
 
@@ -240,6 +254,7 @@ int main(int argc, char *argv[])
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+    signal(SIGUSR1, sigusr1_handler);
 
     system_state_init();
 

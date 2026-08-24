@@ -111,20 +111,30 @@ static bool fetch_http_weather(weather_data_t *out_data)
             struct pollfd pfd;
             pfd.fd = sock_fd;
             pfd.events = POLLOUT;
-            int poll_ret = poll(&pfd, 1, WEATHER_TIMEOUT_SEC * 1000);
+            int poll_ret;
+
+            /* Retry poll() if interrupted by system signal (EINTR) */
+            do {
+                poll_ret = poll(&pfd, 1, WEATHER_TIMEOUT_SEC * 1000);
+            } while (poll_ret < 0 && errno == EINTR);
+
             if (poll_ret <= 0) {
                 printf("weather_screen: Connect timed out (%ds)\n", WEATHER_TIMEOUT_SEC);
                 if (sock_fd >= 0) close(sock_fd);
                 return false;
             }
+
             int sock_err = 0;
             socklen_t err_len = sizeof(sock_err);
-            getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, &sock_err, &err_len);
-            if (sock_err != 0) {
-                printf("weather_screen: Connect error: %s\n", strerror(sock_err));
+            if (getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, &sock_err, &err_len) < 0 || sock_err != 0) {
+                printf("weather_screen: Connect error: %s\n", strerror(sock_err ? sock_err : errno));
                 if (sock_fd >= 0) close(sock_fd);
                 return false;
             }
+        } else if (errno == EINTR) {
+            /* Handled signal interruption gracefully */
+            if (sock_fd >= 0) close(sock_fd);
+            return false;
         } else {
             perror("weather_screen: Connect failed immediately");
             if (sock_fd >= 0) close(sock_fd);

@@ -61,7 +61,13 @@ static irqreturn_t btn_irq_handler(int irq, void *dev_id)
     int next_head;
     unsigned long flags;
 
-    /* 1. Software Debounce Filter */
+    /* 
+     * 1. Software Debounce Filter (20ms threshold):
+     * Mechanical tactile buttons physically produce contact bounce noise (spurious transitions)
+     * lasting typically 5-15ms upon pressing or releasing. A 20ms threshold (DEBOUNCE_TIME_NS)
+     * effectively filters 100% of contact chatter while guaranteeing immediate responsiveness
+     * to intentional human button presses (human clicks are typically > 50ms).
+     */
     delta_ns = ktime_to_ns(ktime_sub(now, btn_data.last_irq_time));
     if (delta_ns < DEBOUNCE_TIME_NS) {
         return IRQ_HANDLED; /* Ignore contact bounce noise */

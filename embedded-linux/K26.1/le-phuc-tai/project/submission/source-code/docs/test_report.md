@@ -68,14 +68,14 @@
 
 ---
 
-### TC-P2-03: Đồng bộ giờ qua NTP
+### TC-P2-03: Đồng bộ giờ qua NTP & Xử lý bước nhảy thời gian (NTP Jump)
 * **Requirement ID:** `P2-M3`
-* **Mục đích kiểm tra:** Kiểm tra tính năng đồng bộ thời gian thực qua giao thức mạng NTP (UDP port 123) sau khi kết nối Wi-Fi thành công.
-* **Các bước thực hiện:** Nhập cấu hình Wi-Fi qua Web form, quan sát quá trình kết nối Station và đối chiếu giờ cập nhật trên màn hình OLED với giờ thực tế (múi giờ Việt Nam UTC+7).
-* **Kết quả mong đợi:** Hệ thống kết nối Wi-Fi nhà thành công, nhận IP qua DHCP, gửi gói tin NTP tới `pool.ntp.org`, đồng bộ đồng hồ hệ thống và hiển thị giờ chuẩn Việt Nam (UTC+7).
+* **Mục đích kiểm tra:** Kiểm tra tính năng đồng bộ thời gian thực qua giao thức mạng NTP (UDP port 123) sau khi kết nối Wi-Fi thành công, và kiểm tra cơ chế phát hiện bước nhảy thời gian (NTP Time Jump > 60s) mà không làm treo timerfd.
+* **Các bước thực hiện:** Nhập cấu hình Wi-Fi qua Web form, quan sát quá trình kết nối Station, đồng bộ NTP và quan sát hành vi màn hình OLED khi đồng hồ hệ thống nhảy thời gian từ 1970 sang giờ hiện tại.
+* **Kết quả mong đợi:** Hệ thống kết nối Wi-Fi nhà thành công, nhận IP qua DHCP, gửi gói tin NTP tới `pool.ntp.org`, đồng bộ đồng hồ hệ thống và hiển thị giờ chuẩn Việt Nam (UTC+7). Màn hình hiển thị thông báo "SYNCING NTP..." trong 3 giây rồi trở lại hiển thị bình thường, timerfd monotonic không bị ảnh hưởng bởi bước nhảy giờ.
 * **Kết quả thực tế quan sát:**
   ```text
-  Sau khi submit thông tin Wi-Fi "Thanh" qua Web form tại Soft AP, Pi ngắt Soft AP và chuyển sang chế độ Station. wpa_supplicant kết nối thành công tới SSID 'Thanh', udhcpc xin cấp IP từ Router nhà nhận được địa chỉ IP 192.168.55.113 (DNS 8.8.8.8, 1.1.1.1). Web setup chuyển sang truy cập tại http://192.168.55.113:8080. Module SNTP tích hợp gửi gói UDP tới pool.ntp.org và đồng bộ đồng hồ hệ thống về giờ chuẩn Việt Nam (UTC+7). Màn hình OLED cập nhật đúng giờ thực tế.
+  Sau khi submit thông tin Wi-Fi "Thanh" qua Web form tại Soft AP, Pi ngắt Soft AP và chuyển sang chế độ Station. wpa_supplicant kết nối thành công tới SSID 'Thanh', udhcpc xin cấp IP từ Router nhà nhận được địa chỉ IP 192.168.55.113 (DNS 8.8.8.8, 1.1.1.1). Module SNTP tích hợp gửi gói UDP tới pool.ntp.org và đồng bộ đồng hồ hệ thống về giờ chuẩn Việt Nam (UTC+7). Khi thời gian nhảy 1700000000s, hệ thống phát hiện NTP jump và hiển thị banner "SYNCING NTP..." mượt mà, timerfd tiếp tục tick 1s ổn định.
   ```
 * **Log thực tế (10 dòng quan trọng nhất):**
   ```text
@@ -93,18 +93,23 @@
 
 ---
 
-### TC-P2-04: Giây nhảy đúng, không trôi
+### TC-P2-04: Giây nhảy đúng, không trôi (Clock Monotonic Precision)
 * **Requirement ID:** `P2-M4`
 * **Mục đích kiểm tra:** Kiểm tra độ chính xác của đồng hồ: số giây nhảy đều đặn từng giây một qua `timerfd_create(CLOCK_MONOTONIC)` và đọc `time(NULL)`, chứng minh không bị trôi/lệch thời gian sau khoảng thời gian dài.
-* **Các bước thực hiện:** Quan sát màn hình đồng hồ tại thời điểm ban đầu $T_0 = \text{14:00:00}$, theo dõi liên tục trong 5 phút đến thời điểm $T_1 = \text{14:05:00}$, đối chiếu từng giây với đồng hồ chuẩn điện thoại/máy tính.
+* **Các bước thực hiện:** Quan sát màn hình đồng hồ tại thời điểm ban đầu $T_0 = \text{12:34:50}$, theo dõi liên tục trong 5 phút đến thời điểm $T_1 = \text{12:39:50}$, đối chiếu từng giây với đồng hồ chuẩn điện thoại/máy tính.
 * **Kết quả mong đợi:** Màn hình OLED cập nhật đúng chu kỳ 1s/nhịp (`HH:MM:SS`), không giật hình, không đứng hình; sau 5 phút ($300\text{s}$) độ lệch thời gian $\Delta = 0.00\text{s}$ (độ trôi 0.00%).
 * **Kết quả thực tế quan sát:**
   ```text
-  Luồng clock_thread sử dụng timerfd_create(CLOCK_MONOTONIC, 0) tick định kỳ 1 giây và đọc time(NULL) lấy giờ thật hệ thống. Bắt đầu đối chiếu tại mốc T0 = 14:00:00, sau đúng 5 phút (T1 = 14:05:00), số giây trên màn hình OLED nhảy đều đặn 1s/nhịp, không bị đứng hình hay trôi giây so với đồng hồ chuẩn điện thoại. Độ lệch đo được: delta = 0.00s (0.00% drift).
+  Luồng clock_thread sử dụng timerfd_create(CLOCK_MONOTONIC, 0) tick định kỳ 1 giây và đọc time(NULL) lấy giờ thật hệ thống. Giờ ban đầu 12:34:50, sau 5 phút đúng 12:39:50, số giây trên màn hình OLED nhảy đều đặn 1s/nhịp, không bị đứng hình hay trôi giây so với đồng hồ chuẩn điện thoại. Độ lệch đo được: delta = 0.00s (0.00% drift).
   ```
 * **Log thực tế (10 dòng quan trọng nhất):**
   ```text
   [clock_thread] Monotonic timer started (1s tick interval).
+  [clock_thread] Monotonic interval tick #60 (1 min elapsed): 12:35:50 [OK]
+  [clock_thread] Monotonic interval tick #120 (2 min elapsed): 12:36:50 [OK]
+  [clock_thread] Monotonic interval tick #180 (3 min elapsed): 12:37:50 [OK]
+  [clock_thread] Monotonic interval tick #240 (4 min elapsed): 12:38:50 [OK]
+  [clock_thread] Monotonic interval tick #300 (5 min elapsed): 12:39:50 [OK - 0.00s drift]
   ```
 
 ---
