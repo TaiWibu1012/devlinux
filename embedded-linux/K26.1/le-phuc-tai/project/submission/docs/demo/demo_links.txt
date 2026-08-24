@@ -1,0 +1,17 @@
+# DEMO LINKS & TIMESTAMPS — Project 2: Smart Weather Alarm Clock
+# Học viên: Lê Phúc Tài | Lớp: DevLinux Embedded Linux K26.1
+# Thiết bị thực thi: Raspberry Pi Zero 2W
+
+# Link Video Demo (Google Drive):
+https://drive.google.com/drive/folders/1GU7R6vOsTWTy2VfNvAtRRkGLiz75GMjc?usp=sharing
+
+
+# Danh sách Timestamps các chức năng demo trong Video:
+00:00  Khởi động Pi Zero 2W, nạp drivers & chạy smartclock
+00:28  Nhấn giữ nút >= 5s vào chế độ Smart Config (Soft AP phát SSID SmartClock_Setup)
+00:40  Kết nối wifi phát ra từ Pi và truy cập vào web theo địa chỉ ip được phát : 192.168.4.1:8080
+01:00  Nhập Wi-Fi 'Thanh' qua Web, Pi kết nối nhận IP 192.168.55.113 & đồng bộ NTP
+01:25  Màn hình đồng hồ: Giây nhảy đều đặn 1s/nhịp, không trôi giờ và nhấn ngắn nút chuyển màn hình CLOCK <-> WEATHER
+01:50  Đặt giờ báo thức qua Web theo ip được cấp: 192.168.55.113:8080
+02:48  Nhấn ngắn lần 1 tắt chuông ngay (màn hình giữ nguyên); nhấn lần 2 chuyển màn hình
+03:20  Khởi động lại thiết bị (Reboot): Tự động reconnect Wi-Fi 'Thanh' & nạp lại báo thức
