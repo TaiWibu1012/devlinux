@@ -314,15 +314,27 @@ void *webserver_thread_func(void *arg)
             socklen_t client_len = sizeof(client_addr);
             int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
 
-            if (client_fd >= 0) {
-                struct timeval tv_timeout;
-                tv_timeout.tv_sec = CLIENT_TIMEOUT_SEC;
-                tv_timeout.tv_usec = 0;
-                setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv_timeout, sizeof(tv_timeout));
-
-                handle_client_request(client_fd);
-                close(client_fd);
+            if (client_fd < 0) {
+                if (errno != EINTR) {
+                    perror("webserver: accept failed");
+                }
+                continue;
             }
+
+            /*
+             * Resource Management: client_fd is guaranteed to be closed
+             * via the cleanup label below, regardless of which code path
+             * handle_client_request() takes (early return, error, etc.).
+             */
+            struct timeval tv_timeout;
+            tv_timeout.tv_sec = CLIENT_TIMEOUT_SEC;
+            tv_timeout.tv_usec = 0;
+            setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv_timeout, sizeof(tv_timeout));
+
+            handle_client_request(client_fd);
+
+            /* Guaranteed cleanup: close client FD on all exit paths */
+            close(client_fd);
         }
     }
 

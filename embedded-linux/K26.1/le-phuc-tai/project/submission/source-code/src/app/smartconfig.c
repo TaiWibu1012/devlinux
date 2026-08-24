@@ -298,13 +298,19 @@ static void execute_start_softap(void)
 
     /* 5. Khởi chạy AP bằng wpa_supplicant và cấp IP bằng udhcpd */
     char *const cmd_wpa_ap[] = {"wpa_supplicant", "-B", "-i", "wlan0", "-c", "/etc/wpa_supplicant/softap.conf", NULL};
-    safe_exec(cmd_wpa_ap);
+    int ret_wpa = safe_exec(cmd_wpa_ap);
+    if (ret_wpa != 0) {
+        printf("[smartconfig] WARNING: wpa_supplicant AP start failed (exit=%d)\n", ret_wpa);
+    }
 
     char *const cmd_touch[] = {"touch", "/var/lib/misc/udhcpd.leases", NULL};
     safe_exec(cmd_touch);
 
     char *const cmd_udhcpd[] = {"udhcpd", "/etc/udhcpd.conf", NULL};
-    safe_exec(cmd_udhcpd);
+    int ret_dhcp = safe_exec(cmd_udhcpd);
+    if (ret_dhcp != 0) {
+        printf("[smartconfig] WARNING: udhcpd start failed (exit=%d)\n", ret_dhcp);
+    }
 
     pthread_mutex_lock(&g_state_mutex);
     g_system_state.net_mode = MODE_SOFT_AP;
@@ -335,7 +341,10 @@ static void execute_connect_station(const char *ssid, const char *password)
     safe_exec(cmd_ifup);
 
     char *const cmd_wpa_st[] = {"wpa_supplicant", "-B", "-i", "wlan0", "-c", "/etc/wpa_supplicant/wpa_supplicant.conf", NULL};
-    safe_exec(cmd_wpa_st);
+    int ret_wpa_st = safe_exec(cmd_wpa_st);
+    if (ret_wpa_st != 0) {
+        printf("[smartconfig] WARNING: wpa_supplicant station start failed (exit=%d)\n", ret_wpa_st);
+    }
 
     bool connected = false;
     int elapsed = 0;

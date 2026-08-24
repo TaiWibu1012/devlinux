@@ -2,6 +2,10 @@
  * @file ssd1306_oled.c
  * @brief SSD1306 I2C OLED Driver and Graphics Utilities
  * @author PHUC TAI
+ *
+ * Thread Safety: All public ssd1306_* functions are protected by s_oled_mutex.
+ * Currently only clock_thread calls render functions (Master Display Arbitrator
+ * pattern in clock_screen.c), but the mutex provides defense-in-depth.
  */
 
 #include "ssd1306_oled.h"
@@ -11,11 +15,13 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
 
 static int s_i2c_fd = -1;
 static uint8_t s_oled_buffer[SSD1306_BUFSIZE];
+static pthread_mutex_t s_oled_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Full 5x7 standard ASCII table */
 static const uint8_t FONT_5X7[][5] = {
@@ -178,12 +184,18 @@ void ssd1306_close(void)
 
 void ssd1306_clear(void)
 {
+    pthread_mutex_lock(&s_oled_mutex);
     memset(s_oled_buffer, 0x00, sizeof(s_oled_buffer));
+    pthread_mutex_unlock(&s_oled_mutex);
 }
 
 void ssd1306_update(void)
 {
-    if (s_i2c_fd < 0) return;
+    pthread_mutex_lock(&s_oled_mutex);
+    if (s_i2c_fd < 0) {
+        pthread_mutex_unlock(&s_oled_mutex);
+        return;
+    }
 
     uint8_t tx_buf[SSD1306_WIDTH + 1];
     tx_buf[0] = 0x40; /* Data mode */
@@ -198,6 +210,7 @@ void ssd1306_update(void)
             perror("ssd1306: page write failed");
         }
     }
+    pthread_mutex_unlock(&s_oled_mutex);
 }
 
 void ssd1306_draw_pixel(int x, int y, uint8_t color)

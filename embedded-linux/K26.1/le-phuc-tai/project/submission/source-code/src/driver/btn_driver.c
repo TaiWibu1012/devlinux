@@ -79,7 +79,8 @@ static irqreturn_t btn_irq_handler(int irq, void *dev_id)
         btn_data.event_buf[btn_data.head].timestamp_ns = ktime_to_ns(now);
         btn_data.head = next_head;
     } else {
-        pr_warn(DRIVER_NAME ": Event buffer overflow! Dropping event.\n");
+        pr_warn(DRIVER_NAME ": Event buffer overflow! head=%d tail=%d capacity=%d. Dropping event.\n",
+                btn_data.head, btn_data.tail, BUFFER_SIZE);
     }
 
     spin_unlock_irqrestore(&btn_data.lock, flags);
