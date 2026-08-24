@@ -101,7 +101,7 @@ static bool fetch_http_weather(weather_data_t *out_data)
 
     if (inet_pton(AF_INET, WEATHER_SERVER_IP, &server_addr.sin_addr) <= 0) {
         perror("weather_screen: Invalid server IP");
-        close(sock_fd);
+        if (sock_fd >= 0) close(sock_fd);
         return false;
     }
 
@@ -114,7 +114,7 @@ static bool fetch_http_weather(weather_data_t *out_data)
             int poll_ret = poll(&pfd, 1, WEATHER_TIMEOUT_SEC * 1000);
             if (poll_ret <= 0) {
                 printf("weather_screen: Connect timed out (%ds)\n", WEATHER_TIMEOUT_SEC);
-                close(sock_fd);
+                if (sock_fd >= 0) close(sock_fd);
                 return false;
             }
             int sock_err = 0;
@@ -122,12 +122,12 @@ static bool fetch_http_weather(weather_data_t *out_data)
             getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, &sock_err, &err_len);
             if (sock_err != 0) {
                 printf("weather_screen: Connect error: %s\n", strerror(sock_err));
-                close(sock_fd);
+                if (sock_fd >= 0) close(sock_fd);
                 return false;
             }
         } else {
             perror("weather_screen: Connect failed immediately");
-            close(sock_fd);
+            if (sock_fd >= 0) close(sock_fd);
             return false;
         }
     }
@@ -144,7 +144,7 @@ static bool fetch_http_weather(weather_data_t *out_data)
 
     if (send(sock_fd, request, strlen(request), 0) < 0) {
         perror("weather_screen: Send failed");
-        close(sock_fd);
+        if (sock_fd >= 0) close(sock_fd);
         return false;
     }
 
@@ -161,7 +161,7 @@ static bool fetch_http_weather(weather_data_t *out_data)
         }
     }
 
-    close(sock_fd);
+    if (sock_fd >= 0) close(sock_fd);
     return success;
 }
 

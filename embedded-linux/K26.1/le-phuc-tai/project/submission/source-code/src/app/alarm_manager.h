@@ -13,6 +13,9 @@
 #define ALARM_CONFIG_FILE       "/etc/smartclock/alarm.conf"
 #define ALARM_CONFIG_TMP_FILE   "/etc/smartclock/alarm.conf.tmp"
 
+#define DEFAULT_ALARM_HOUR      7
+#define DEFAULT_ALARM_MINUTE    0
+
 /**
  * @brief Load alarm configuration from persistent storage
  * @param config_path Path to alarm.conf

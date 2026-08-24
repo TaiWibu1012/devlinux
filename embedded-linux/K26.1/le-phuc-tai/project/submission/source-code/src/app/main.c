@@ -168,15 +168,12 @@ static void *btn_thread_func(void *arg)
 
             /* Bọc toàn bộ logic kiểm tra và cập nhật trạng thái trong 1 lock nguyên tử duy nhất */
             pthread_mutex_lock(&g_state_mutex);
-            bool is_ringing = g_system_state.alarm_ringing;
             net_mode_t current_net = g_system_state.net_mode;
 
             /* Ngữ cảnh 0: Nhấn giữ >= 5000ms -> Chuyển đổi Soft AP / Station */
             if (duration_ms >= BTN_LONG_PRESS_MIN_MS) {
                 printf("[btn_thread] LONG PRESS (%llu ms) -> Toggle SmartConfig\n", (unsigned long long)duration_ms);
-                if (is_ringing) {
-                    g_system_state.alarm_ringing = false;
-                }
+                g_system_state.alarm_ringing = false;
                 pthread_mutex_unlock(&g_state_mutex);
 
                 if (current_net == MODE_STATION) {
@@ -188,13 +185,13 @@ static void *btn_thread_func(void *arg)
             /* Ngữ cảnh 1 & 2: Nhấn ngắn (50ms <= t < 5000ms) */
             else if (duration_ms >= BTN_SHORT_PRESS_MIN_MS) {
                 printf("[btn_thread] SHORT PRESS (%llu ms)\n", (unsigned long long)duration_ms);
-                /* Ưu tiên 1: Tắt còi báo thức nếu đang kêu */
-                if (is_ringing) {
+                /* [P2-M9] Ưu tiên 1: Tắt còi báo thức ngay lập tức nếu đang kêu */
+                if (g_system_state.alarm_ringing) {
                     g_system_state.alarm_ringing = false;
                     pthread_mutex_unlock(&g_state_mutex);
                     printf("[btn_thread] Alarm silenced by user.\n");
                 }
-                /* Ưu tiên 2: Chuyển màn hình CLOCK <-> WEATHER */
+                /* [P2-M6] Ưu tiên 2: Chuyển màn hình CLOCK <-> WEATHER */
                 else {
                     if (g_system_state.current_screen == SCREEN_CLOCK) {
                         g_system_state.current_screen = SCREEN_WEATHER;

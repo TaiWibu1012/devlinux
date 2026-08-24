@@ -14,6 +14,9 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#define DEFAULT_ALARM_HOUR      7
+#define DEFAULT_ALARM_MINUTE    0
+
 /* Track last triggered minute to prevent repeated firing in the same minute */
 static int s_last_triggered_minute = -1;
 
@@ -25,14 +28,14 @@ int alarm_manager_load_config(const char *config_path, alarm_config_t *out_cfg)
     FILE *fp = fopen(config_path, "r");
     if (!fp) {
         /* If file does not exist, initialize with default disabled values */
-        out_cfg->hour = 7;
-        out_cfg->minute = 0;
+        out_cfg->hour = DEFAULT_ALARM_HOUR;
+        out_cfg->minute = DEFAULT_ALARM_MINUTE;
         out_cfg->enabled = false;
         return -ENOENT;
     }
 
     char line[64];
-    int hour = 7, min = 0, en = 0;
+    int hour = DEFAULT_ALARM_HOUR, min = DEFAULT_ALARM_MINUTE, en = 0;
 
     while (fgets(line, sizeof(line), fp)) {
         if (sscanf(line, "hour=%d", &hour) == 1) continue;
@@ -42,8 +45,8 @@ int alarm_manager_load_config(const char *config_path, alarm_config_t *out_cfg)
 
     fclose(fp);
 
-    out_cfg->hour = (hour >= 0 && hour <= 23) ? hour : 7;
-    out_cfg->minute = (min >= 0 && min <= 59) ? min : 0;
+    out_cfg->hour = (hour >= 0 && hour <= 23) ? hour : DEFAULT_ALARM_HOUR;
+    out_cfg->minute = (min >= 0 && min <= 59) ? min : DEFAULT_ALARM_MINUTE;
     out_cfg->enabled = (en != 0);
 
     printf("[alarm_manager] Loaded config: %02d:%02d (Enabled: %d)\n",
@@ -52,6 +55,7 @@ int alarm_manager_load_config(const char *config_path, alarm_config_t *out_cfg)
     return 0;
 }
 
+/* [P2-M7] Save alarm configuration to persistent storage using Atomic File Write Pattern (.tmp -> fsync -> rename) */
 int alarm_manager_save_config_atomic(const char *config_path, const alarm_config_t *cfg)
 {
     if (!config_path || !cfg)
@@ -90,6 +94,7 @@ int alarm_manager_save_config_atomic(const char *config_path, const alarm_config
     return 0;
 }
 
+/* [P2-M8] Check current system time against configured alarm and trigger buzzer */
 void alarm_manager_check(const struct tm *tm_info)
 {
     if (!tm_info) return;

@@ -79,6 +79,7 @@ static bool get_wlan0_ip(char *out_ip, size_t max_len)
     if (fd < 0) return false;
 
     struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
     ifr.ifr_addr.sa_family = AF_INET;
     strncpy(ifr.ifr_name, "wlan0", IFNAMSIZ - 1);
     ifr.ifr_name[IFNAMSIZ - 1] = '\0';

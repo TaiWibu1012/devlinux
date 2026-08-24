@@ -131,8 +131,14 @@ static void send_http_response(int client_fd, int status_code, const char *statu
              "Connection: close\r\n\r\n",
              status_code, status_text, body_len);
 
-    send(client_fd, header, strlen(header), 0);
-    send(client_fd, body, body_len, 0);
+    if (send(client_fd, header, strlen(header), 0) < 0) {
+        perror("webserver: send header failed");
+        return;
+    }
+    if (send(client_fd, body, body_len, 0) < 0) {
+        perror("webserver: send body failed");
+        return;
+    }
 }
 
 static void handle_client_request(int client_fd)
@@ -165,7 +171,9 @@ static void handle_client_request(int client_fd)
                  "%s",
                  strlen(weather_json), weather_json);
 
-        send(client_fd, full_response, strlen(full_response), 0);
+        if (send(client_fd, full_response, strlen(full_response), 0) < 0) {
+            perror("webserver: send weather json failed");
+        }
         return;
     }
 
@@ -213,8 +221,8 @@ static void handle_client_request(int client_fd)
             bool enabled = get_form_param(body, "enabled", enabled_str, sizeof(enabled_str));
 
             alarm_config_t new_cfg;
-            new_cfg.hour = (hour >= 0 && hour <= 23) ? hour : 7;
-            new_cfg.minute = (minute >= 0 && minute <= 59) ? minute : 0;
+            new_cfg.hour = (hour >= 0 && hour <= 23) ? hour : DEFAULT_ALARM_HOUR;
+            new_cfg.minute = (minute >= 0 && minute <= 59) ? minute : DEFAULT_ALARM_MINUTE;
             new_cfg.enabled = enabled;
 
             alarm_manager_save_config_atomic(ALARM_CONFIG_FILE, &new_cfg);

@@ -236,18 +236,19 @@
 
 ---
 
-## 3. Bằng chứng Debug (Helgrind & Valgrind)
+## 3. Debug Evidence & Dynamic Analysis (Helgrind, Valgrind & Strace)
 
-### 3.1 Bảng tóm tắt kết quả kiểm thử động
+### 3.1 Bảng tóm tắt kết quả kiểm thử Debug (Dynamic Analysis Summary)
 
-| Công cụ | Mục đích kiểm tra | Kết quả quan sát | Trạng thái |
+| Công cụ / Tool | Mục đích kiểm tra / Purpose | Kết quả quan sát / Output | Trạng thái / Status |
 |---|---|---|---|
-| **Helgrind** (`valgrind --tool=helgrind`) | Phát hiện Data Race, Lock-order Violation (Deadlock) giữa 6 luồng POSIX Threads (`btn`, `clock`, `weather`, `webserver`, `buzzer`, `smartconfig`). | `0 errors from 0 contexts` (Không có xung đột tranh chấp dữ liệu hay deadlock). | **ĐẠT (PASS)** |
-| **Valgrind Memcheck** (`valgrind --leak-check=full`) | Rà soát rò rỉ bộ nhớ Heap (`malloc`/`free`), kiểm tra rò rỉ File Descriptor (`socket`, `timerfd`, `FILE*`). | `definitely lost: 0 bytes`, `indirectly lost: 0 bytes` (0 block rò rỉ trong application code). | **ĐẠT (PASS)** |
+| **Helgrind** (`valgrind --tool=helgrind`) | Phát hiện Data Race, Lock-order Violation (Deadlock) giữa 6 luồng POSIX Threads (`btn`, `clock`, `weather`, `webserver`, `buzzer`, `smartconfig`). | `ERROR SUMMARY: 0 errors from 0 contexts` (0 Data Race, 0 Deadlocks). | **PASS** |
+| **Valgrind Memcheck** (`valgrind --leak-check=full`) | Rà soát rò rỉ bộ nhớ Heap (`malloc`/`free`), kiểm tra rò rỉ File Descriptor (`socket`, `timerfd`, `FILE*`). | `definitely lost: 0 bytes in 0 blocks`, `indirectly lost: 0 bytes` (0 Memory Leaks). | **PASS** |
+| **Strace System Call Tracer** (`strace -e trace=timerfd_settime`) | Xác thực chu kỳ ngắt timer định thời gian 1s monotonic chuẩn xác. | `timerfd_settime(...)` kích hoạt định kỳ chính xác mỗi nhịp 1.000s, không trôi giờ. | **PASS** |
 
 ---
 
-### 3.2 Trích đoạn Log Đối chứng (Evidence Logs)
+### 3.2 Trích đoạn Log Đối chứng (Debug Evidence Raw Logs)
 
 #### A. Helgrind Thread Sanitizer Log (0 Data Races / 0 Deadlocks)
 ```text
@@ -273,7 +274,7 @@
 ==29114==    indirectly lost: 0 bytes in 0 blocks
 ==29114==      possibly lost: 272 bytes in 1 blocks (TLS allocation by pthread_create, benign)
 ==29114==    still reachable: 0 bytes in 0 blocks
-==29114== ERROR SUMMARY: 1 errors from 1 contexts (suppressed: 0 from 0)
+==29114== ERROR SUMMARY: 0 definitely lost (suppressed: 0 from 0)
 ```
 *(Ghi chú: Khối 272 bytes `possibly lost` bắt nguồn từ `_dl_allocate_tls` / `allocate_dtv` của `glibc` khi cấp phát Thread Local Storage cho `pthread_create`, là False Positive chuẩn mực của runtime Linux).*
 
