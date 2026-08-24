@@ -1,6 +1,6 @@
 /**
  * @file webserver.c
- * @brief Embedded Web Server for Wi-Fi & Alarm Configuration
+ * @brief [P2-M7] Embedded HTTP Web Server for Wi-Fi & Alarm Configuration (Port 8080)
  * @author PHUC TAI
  */
 

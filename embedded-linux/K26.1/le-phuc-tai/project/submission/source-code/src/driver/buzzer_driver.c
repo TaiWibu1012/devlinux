@@ -1,6 +1,6 @@
 /**
  * @file buzzer_driver.c
- * @brief Character Device Driver for Passive Buzzer using Kernel High-Resolution Timers (hrtimer)
+ * @brief [P2-M2] Character Device Driver for Passive Buzzer using Kernel High-Resolution Timers (hrtimer 2000Hz PWM Tone Generator)
  * @author PHUC TAI
  */
 

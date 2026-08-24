@@ -1,6 +1,6 @@
 /**
  * @file alarm_manager.c
- * @brief Implementation of alarm checking, atomic config I/O, and buzzer driver interaction
+ * @brief [P2-M7] [P2-M8] Alarm Manager with Atomic Write config persistence and Buzzer Pulsing Controller
  * @author PHUC TAI
  */
 

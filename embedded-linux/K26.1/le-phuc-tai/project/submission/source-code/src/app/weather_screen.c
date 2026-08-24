@@ -1,6 +1,6 @@
 /**
  * @file weather_screen.c
- * @brief Implementation of robust Weather HTTP client and UI rendering with full-width Web config URL
+ * @brief [P2-M5] Weather Screen Controller & HTTP Client (Fetch on entry, 5-min refresh, 5s non-blocking timeout)
  * @author PHUC TAI
  */
 

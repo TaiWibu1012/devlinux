@@ -1,6 +1,6 @@
 /**
  * @file smartconfig.c
- * @brief Wi-Fi Configuration Manager (Soft AP / Station Mode & SNTP Sync)
+ * @brief [P2-M1] [P2-M3] Wi-Fi Configuration Manager (Soft AP / Station Mode & SNTP NTP Sync UTC+7)
  * @author PHUC TAI
  */
 

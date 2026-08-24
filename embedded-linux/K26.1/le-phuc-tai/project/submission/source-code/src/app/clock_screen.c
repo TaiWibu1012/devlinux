@@ -1,6 +1,6 @@
 /**
  * @file clock_screen.c
- * @brief Clock display screen controller (timerfd 1s monotonic interval)
+ * @brief [P2-M4] Real-time Clock Screen Controller (timerfd 1s monotonic interval, no drift)
  * @author PHUC TAI
  */
 

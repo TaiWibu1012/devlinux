@@ -1,6 +1,6 @@
 /**
  * @file btn_driver.c
- * @brief Character Device Driver for Smart Weather Alarm Clock Push Button
+ * @brief [P2-M1] Character Device Driver for Smart Weather Alarm Clock Push Button (GPIO Dual-Edge IRQ, Debounce & Timestamp)
  * @author PHUC TAI
  */
 

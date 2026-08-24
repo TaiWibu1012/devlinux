@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief Main daemon entry point for Smart Weather Alarm Clock
+ * @brief [P2-M6] [P2-M9] Main Application Entry Point & Button Priority Dispatcher (Short press screen toggle / Alarm silence)
  * @author PHUC TAI
  */
 
