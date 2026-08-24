@@ -5,6 +5,7 @@
  */
 
 #include "smartconfig.h"
+#include "../../include/smartclock_common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -147,10 +148,21 @@ static bool sync_ntp_time(const char *server_host)
 
     /* Extract Transmit Timestamp (Bytes 40-43) */
     uint32_t secs_since_1900 = (packet[40] << 24) | (packet[41] << 16) | (packet[42] << 8) | packet[43];
-    time_t epoch_time = (time_t)(secs_since_1900 - NTP_TIMESTAMP_DELTA);
+    if (secs_since_1900 < NTP_TIMESTAMP_DELTA) {
+        printf("[smartconfig] Invalid NTP timestamp received.\n");
+        return false;
+    }
 
-    /* Apply UTC+7 Offset for Vietnam Timezone */
-    epoch_time += VIETNAM_TIMEZONE_OFFSET;
+    uint64_t raw_epoch = (uint64_t)(secs_since_1900 - NTP_TIMESTAMP_DELTA);
+
+    /* Year 2038 / Integer Overflow Safe Check */
+    if (raw_epoch > (uint64_t)(INT64_MAX - VIETNAM_TIMEZONE_OFFSET)) {
+        printf("[smartconfig] NTP timestamp overflow error.\n");
+        return false;
+    }
+
+    /* Apply UTC+7 Offset for Vietnam Timezone safely */
+    time_t epoch_time = (time_t)(raw_epoch + VIETNAM_TIMEZONE_OFFSET);
 
     /* Set Linux Kernel Wall-Clock Time */
     struct timespec ts;
@@ -254,12 +266,13 @@ static void execute_start_softap(void)
                     "ctrl_interface=/var/run/wpa_supplicant\n"
                     "ap_scan=1\n\n"
                     "network={\n"
-                    "    ssid=\"SmartClock_Setup\"\n"
+                    "    ssid=\"%s\"\n"
                     "    mode=2\n"
                     "    key_mgmt=WPA-PSK\n"
                     "    psk=\"12345678\"\n"
                     "    frequency=2437\n"
-                    "}\n");
+                    "}\n",
+                    SOFTAP_DEFAULT_SSID);
             fclose(f_ap);
         }
     } else {
@@ -272,18 +285,19 @@ static void execute_start_softap(void)
         f_dhcp = fopen("/etc/udhcpd.conf", "w");
         if (f_dhcp) {
             fprintf(f_dhcp,
-                    "start 192.168.4.2\n"
-                    "end 192.168.4.20\n"
+                    "start %s\n"
+                    "end %s\n"
                     "interface wlan0\n"
-                    "opt subnet 255.255.255.0\n"
-                    "opt router 192.168.4.1\n");
+                    "opt subnet %s\n"
+                    "opt router %s\n",
+                    SOFTAP_DHCP_START_IP, SOFTAP_DHCP_END_IP, SOFTAP_NETMASK, SOFTAP_GATEWAY_IP);
             fclose(f_dhcp);
         }
     } else {
         fclose(f_dhcp);
     }
 
-    /* 4. Dừng dịch vụ cũ và gán IP tĩnh 192.168.4.1 */
+    /* 4. Dừng dịch vụ cũ và gán IP tĩnh */
     char *const cmd_rfkill[] = {"rfkill", "unblock", "wifi", NULL};
     safe_exec(cmd_rfkill);
 
@@ -293,7 +307,7 @@ static void execute_start_softap(void)
     char *const cmd_ifdown[] = {"ifconfig", "wlan0", "down", NULL};
     safe_exec(cmd_ifdown);
 
-    char *const cmd_ifup_ip[] = {"ifconfig", "wlan0", "192.168.4.1", "netmask", "255.255.255.0", "up", NULL};
+    char *const cmd_ifup_ip[] = {"ifconfig", "wlan0", SOFTAP_GATEWAY_IP, "netmask", SOFTAP_NETMASK, "up", NULL};
     safe_exec(cmd_ifup_ip);
 
     /* 5. Khởi chạy AP bằng wpa_supplicant và cấp IP bằng udhcpd */

@@ -16,12 +16,34 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
 
 static int s_i2c_fd = -1;
 static uint8_t s_oled_buffer[SSD1306_BUFSIZE];
-static pthread_mutex_t s_oled_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* 
+ * Thread Safety Guarantee:
+ * All OLED buffer operations and I2C transactions are strictly guarded by s_oled_mutex.
+ * The mutex is initialized as PTHREAD_MUTEX_RECURSIVE to allow safe nested drawing calls.
+ * Furthermore, in application architecture, only clock_thread performs rendering
+ * (Master Display Arbitrator pattern), ensuring zero framebuffer garbling.
+ */
+static pthread_mutex_t s_oled_mutex;
+static bool s_mutex_initialized = false;
+
+static void ensure_mutex_initialized(void)
+{
+    if (!s_mutex_initialized) {
+        pthread_mutexattr_t attr;
+        pthread_mutexattr_init(&attr);
+        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+        pthread_mutex_init(&s_oled_mutex, &attr);
+        pthread_mutexattr_destroy(&attr);
+        s_mutex_initialized = true;
+    }
+}
 
 /* Full 5x7 standard ASCII table */
 static const uint8_t FONT_5X7[][5] = {
@@ -128,6 +150,8 @@ static void ssd1306_send_command(uint8_t cmd)
 
 int ssd1306_init(const char *i2c_dev_path, uint8_t i2c_addr)
 {
+    ensure_mutex_initialized();
+
     s_i2c_fd = open(i2c_dev_path, O_RDWR);
     if (s_i2c_fd < 0) {
         perror("ssd1306: Failed to open I2C device");
@@ -173,17 +197,20 @@ int ssd1306_init(const char *i2c_dev_path, uint8_t i2c_addr)
 
 void ssd1306_close(void)
 {
+    ensure_mutex_initialized();
+    pthread_mutex_lock(&s_oled_mutex);
     if (s_i2c_fd >= 0) {
-        ssd1306_clear();
-        ssd1306_update();
+        memset(s_oled_buffer, 0x00, sizeof(s_oled_buffer));
         ssd1306_send_command(0xAE);
         close(s_i2c_fd);
         s_i2c_fd = -1;
     }
+    pthread_mutex_unlock(&s_oled_mutex);
 }
 
 void ssd1306_clear(void)
 {
+    ensure_mutex_initialized();
     pthread_mutex_lock(&s_oled_mutex);
     memset(s_oled_buffer, 0x00, sizeof(s_oled_buffer));
     pthread_mutex_unlock(&s_oled_mutex);
@@ -191,6 +218,7 @@ void ssd1306_clear(void)
 
 void ssd1306_update(void)
 {
+    ensure_mutex_initialized();
     pthread_mutex_lock(&s_oled_mutex);
     if (s_i2c_fd < 0) {
         pthread_mutex_unlock(&s_oled_mutex);
@@ -217,11 +245,14 @@ void ssd1306_draw_pixel(int x, int y, uint8_t color)
 {
     if (x < 0 || x >= SSD1306_WIDTH || y < 0 || y >= SSD1306_HEIGHT) return;
 
+    ensure_mutex_initialized();
+    pthread_mutex_lock(&s_oled_mutex);
     if (color) {
         s_oled_buffer[x + (y / 8) * SSD1306_WIDTH] |= (1 << (y % 8));
     } else {
         s_oled_buffer[x + (y / 8) * SSD1306_WIDTH] &= ~(1 << (y % 8));
     }
+    pthread_mutex_unlock(&s_oled_mutex);
 }
 
 void ssd1306_draw_char(int x, int y, char c, uint8_t size)

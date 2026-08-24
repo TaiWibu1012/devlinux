@@ -22,6 +22,15 @@
 
 static const char *DAY_NAMES[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
 
+/**
+ * @brief Render Clock UI to OLED Display (Master Display Arbitrator Pattern)
+ * @note Strictly executed only by clock_thread, eliminating concurrent framebuffer write races.
+ *       All underlying ssd1306_* drawing APIs are further protected by recursive s_oled_mutex.
+ * @param tm_info Current wall-clock breakdown
+ * @param net_mode Current active network mode (Station / Soft AP)
+ * @param alarm_cfg Active alarm schedule configuration
+ * @param ntp_sync_counter Active NTP sync banner display counter
+ */
 static void render_clock_ui(const struct tm *tm_info, net_mode_t net_mode, 
                             const alarm_config_t *alarm_cfg, int ntp_sync_counter)
 {

@@ -24,12 +24,20 @@
 
 #define HTTP_BUF_SIZE 2048
 
+/**
+ * @brief Retrieve local IP address assigned to a specific network interface
+ * @param ifname Network interface name (e.g., "wlan0", "lo")
+ * @param out_ip Destination buffer for IP string
+ * @param max_len Size of destination buffer
+ * @return true if IP was successfully retrieved, false otherwise
+ */
 static bool get_interface_ip(const char *ifname, char *out_ip, size_t max_len)
 {
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) return false;
 
     struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
     ifr.ifr_addr.sa_family = AF_INET;
     strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
 
@@ -45,6 +53,12 @@ static bool get_interface_ip(const char *ifname, char *out_ip, size_t max_len)
     return true;
 }
 
+/**
+ * @brief Parse JSON weather response to extract temperature and condition
+ * @param json_body String containing HTTP body payload
+ * @param out_data Destination struct for parsed weather data
+ * @return true if both fields were parsed successfully, false otherwise
+ */
 static bool parse_weather_json(const char *json_body, weather_data_t *out_data)
 {
     if (!json_body || !out_data) return false;
@@ -71,6 +85,11 @@ static bool parse_weather_json(const char *json_body, weather_data_t *out_data)
     return true;
 }
 
+/**
+ * @brief Fetch weather information from Mock Weather Server via non-blocking TCP HTTP GET
+ * @param out_data Destination struct for retrieved weather information
+ * @return true on success, false on network error or timeout
+ */
 static bool fetch_http_weather(weather_data_t *out_data)
 {
     int sock_fd = -1;
@@ -83,7 +102,7 @@ static bool fetch_http_weather(weather_data_t *out_data)
     sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd < 0) {
         perror("weather_screen: Failed to create socket");
-        return false;
+        goto cleanup;
     }
 
     /* Đưa socket về chế độ Non-blocking để kiểm soát chặt timeout connect() */
@@ -101,8 +120,7 @@ static bool fetch_http_weather(weather_data_t *out_data)
 
     if (inet_pton(AF_INET, WEATHER_SERVER_IP, &server_addr.sin_addr) <= 0) {
         perror("weather_screen: Invalid server IP");
-        if (sock_fd >= 0) close(sock_fd);
-        return false;
+        goto cleanup;
     }
 
     int res = connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
@@ -120,25 +138,18 @@ static bool fetch_http_weather(weather_data_t *out_data)
 
             if (poll_ret <= 0) {
                 printf("weather_screen: Connect timed out (%ds)\n", WEATHER_TIMEOUT_SEC);
-                if (sock_fd >= 0) close(sock_fd);
-                return false;
+                goto cleanup;
             }
 
             int sock_err = 0;
             socklen_t err_len = sizeof(sock_err);
             if (getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, &sock_err, &err_len) < 0 || sock_err != 0) {
                 printf("weather_screen: Connect error: %s\n", strerror(sock_err ? sock_err : errno));
-                if (sock_fd >= 0) close(sock_fd);
-                return false;
+                goto cleanup;
             }
-        } else if (errno == EINTR) {
-            /* Handled signal interruption gracefully */
-            if (sock_fd >= 0) close(sock_fd);
-            return false;
         } else {
             perror("weather_screen: Connect failed immediately");
-            if (sock_fd >= 0) close(sock_fd);
-            return false;
+            goto cleanup;
         }
     }
 
@@ -154,8 +165,7 @@ static bool fetch_http_weather(weather_data_t *out_data)
 
     if (send(sock_fd, request, strlen(request), 0) < 0) {
         perror("weather_screen: Send failed");
-        if (sock_fd >= 0) close(sock_fd);
-        return false;
+        goto cleanup;
     }
 
     memset(response, 0, sizeof(response));
@@ -171,10 +181,19 @@ static bool fetch_http_weather(weather_data_t *out_data)
         }
     }
 
-    if (sock_fd >= 0) close(sock_fd);
+cleanup:
+    /* Guaranteed Resource Management: single exit cleanup point */
+    if (sock_fd >= 0) {
+        close(sock_fd);
+    }
     return success;
 }
 
+/**
+ * @brief Render Weather UI to OLED Display (Called strictly by clock_thread / Master Arbitrator)
+ * @param data Current weather metrics
+ * @param net_mode Active network mode (Station / Soft AP)
+ */
 void render_weather_ui(const weather_data_t *data, net_mode_t net_mode)
 {
     char temp_str[16];
@@ -238,8 +257,8 @@ void render_weather_ui(const weather_data_t *data, net_mode_t net_mode)
     ssd1306_draw_hline(0, 49, SSD1306_WIDTH, 1);
 
     if (strcmp(ip_str, "No IP") != 0) {
-        /* Format: "192.168.55.15:8080" (19 chars * 6px = 114px, fits 128px screen) */
-        snprintf(footer_str, sizeof(footer_str), "%s:8080", ip_str);
+        /* Format: "192.168.55.15:8080" (fits 128px screen) */
+        snprintf(footer_str, sizeof(footer_str), "%s:%d", ip_str, DEFAULT_HTTP_PORT);
     } else {
         snprintf(footer_str, sizeof(footer_str), "Disconnected");
     }

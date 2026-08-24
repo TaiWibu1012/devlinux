@@ -27,4 +27,13 @@ struct button_event {
 #define BUZZER_DEV_PATH   "/dev/buzzer_driver"
 #define I2C_DEV_PATH      "/dev/i2c-1"
 
+/* Centralized Network & Server Constants */
+#define DEFAULT_HTTP_PORT           8080
+#define SOFTAP_GATEWAY_IP           "192.168.4.1"
+#define SOFTAP_NETMASK              "255.255.255.0"
+#define SOFTAP_DHCP_START_IP        "192.168.4.2"
+#define SOFTAP_DHCP_END_IP          "192.168.4.20"
+#define SOFTAP_DEFAULT_SSID         "SmartClock_Setup"
+#define LOCAL_LOOPBACK_IP           "127.0.0.1"
+
 #endif /* _SMARTCLOCK_COMMON_H_ */
