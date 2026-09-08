@@ -122,18 +122,9 @@ void *clock_thread_func(void *arg)
         ssize_t s = read(tfd, &expirations, sizeof(expirations));
         if (s != sizeof(expirations)) continue;
 
-        pthread_mutex_lock(&g_state_mutex);
-        bool is_running = g_system_state.running;
-        pthread_mutex_unlock(&g_state_mutex);
-
-        if (!is_running) break;
-
         time_t now = time(NULL);
         struct tm tm_info;
         localtime_r(&now, &tm_info);
-
-        /* ---> QUAN TRỌNG: Kiểm tra và kích hoạt báo thức nếu đúng giờ <--- */
-        alarm_manager_check(&tm_info);
 
         /* Handle NTP Time Jump */
         if (last_time != 0) {
@@ -149,8 +140,21 @@ void *clock_thread_func(void *arg)
             ntp_sync_display_counter--;
         }
 
-        /* Snapshot Shared State */
+        /* 
+         * Single Atomic State Protection:
+         * Lock mutex once to atomically check running flag, evaluate & trigger alarm,
+         * and snapshot shared system state for rendering without race conditions.
+         */
         pthread_mutex_lock(&g_state_mutex);
+        if (!g_system_state.running) {
+            pthread_mutex_unlock(&g_state_mutex);
+            break;
+        }
+
+        /* ---> QUAN TRỌNG: Kiểm tra và kích hoạt báo thức nếu đúng giờ <--- */
+        alarm_manager_check(&tm_info);
+
+        /* Snapshot Shared State */
         screen_mode_t cur_screen = g_system_state.current_screen;
         net_mode_t cur_net = g_system_state.net_mode;
         alarm_config_t cur_alarm = g_system_state.alarm_config;

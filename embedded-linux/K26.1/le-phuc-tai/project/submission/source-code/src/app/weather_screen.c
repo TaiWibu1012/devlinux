@@ -163,7 +163,7 @@ static bool fetch_http_weather(weather_data_t *out_data)
              "Connection: close\r\n\r\n",
              WEATHER_REQUEST_PATH, WEATHER_SERVER_IP, WEATHER_SERVER_PORT);
 
-    if (send(sock_fd, request, strlen(request), 0) < 0) {
+    if (send(sock_fd, request, strlen(request), MSG_NOSIGNAL) < 0) {
         perror("weather_screen: Send failed");
         goto cleanup;
     }
@@ -185,6 +185,7 @@ cleanup:
     /* Guaranteed Resource Management: single exit cleanup point */
     if (sock_fd >= 0) {
         close(sock_fd);
+        sock_fd = -1;
     }
     return success;
 }

@@ -70,8 +70,11 @@ static int safe_exec(char *const argv[])
 
     if (WIFEXITED(status)) {
         return WEXITSTATUS(status);
+    } else if (WIFSIGNALED(status)) {
+        return -1;
+    } else {
+        return -1;
     }
-    return -1;
 }
 
 /* Helper to get dynamic IP of wlan0 interface directly via Linux ioctl */
@@ -398,8 +401,10 @@ static void execute_connect_station(const char *ssid, const char *password)
             printf("[smartconfig] Connected, but waiting for IP lease...\n");
         }
 
-        /* Đồng bộ giờ chuẩn NTP (UTC+7) */
+        /* Đồng bộ giờ chuẩn NTP (UTC+7) qua cả SNTP client và systemd-timesyncd daemon */
         sync_ntp_time(NTP_SERVER);
+        char *const cmd_timesyncd[] = {"systemctl", "restart", "systemd-timesyncd", NULL};
+        safe_exec(cmd_timesyncd);
 
         pthread_mutex_lock(&g_state_mutex);
         g_system_state.net_mode = MODE_STATION;

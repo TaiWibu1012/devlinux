@@ -85,6 +85,13 @@ static bool has_saved_wifi_config(void)
 
 void system_state_init(void)
 {
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_destroy(&g_state_mutex);
+    pthread_mutex_init(&g_state_mutex, &attr);
+    pthread_mutexattr_destroy(&attr);
+
     pthread_mutex_lock(&g_state_mutex);
     g_system_state.current_screen = SCREEN_CLOCK;
     g_system_state.alarm_ringing = false;
@@ -116,6 +123,56 @@ void system_state_destroy(void)
 {
     pthread_cond_destroy(&g_state_cond);
     pthread_mutex_destroy(&g_state_mutex);
+}
+
+/**
+ * @brief Dispatch button actions based on duration and system context priority matrix
+ * @param duration_ms Press duration in milliseconds
+ */
+static void dispatch_button_action(uint64_t duration_ms)
+{
+    pthread_mutex_lock(&g_state_mutex);
+    net_mode_t current_net = g_system_state.net_mode;
+
+    /* Ngữ cảnh 0: Nhấn giữ >= 5000ms -> Chuyển đổi Soft AP / Station */
+    if (duration_ms >= BTN_LONG_PRESS_MIN_MS) {
+        printf("[btn_thread] LONG PRESS (%llu ms) -> Toggle SmartConfig\n", (unsigned long long)duration_ms);
+        g_system_state.alarm_ringing = false;
+        pthread_cond_broadcast(&g_state_cond);
+        pthread_mutex_unlock(&g_state_mutex);
+
+        if (current_net == MODE_STATION) {
+            smartconfig_trigger_softap();
+        } else {
+            smartconfig_trigger_station("", "");
+        }
+    }
+    /* Ngữ cảnh 1 & 2: Nhấn ngắn (50ms <= t < 5000ms) */
+    else if (duration_ms >= BTN_SHORT_PRESS_MIN_MS) {
+        printf("[btn_thread] SHORT PRESS (%llu ms)\n", (unsigned long long)duration_ms);
+        /* [P2-M9] Ưu tiên 1: Tắt còi báo thức ngay lập tức nếu đang kêu */
+        if (g_system_state.alarm_ringing) {
+            g_system_state.alarm_ringing = false;
+            pthread_cond_broadcast(&g_state_cond);
+            pthread_mutex_unlock(&g_state_mutex);
+            printf("[btn_thread] Alarm silenced by user.\n");
+        }
+        /* [P2-M6] Ưu tiên 2: Chuyển màn hình CLOCK <-> WEATHER */
+        else {
+            if (g_system_state.current_screen == SCREEN_CLOCK) {
+                g_system_state.current_screen = SCREEN_WEATHER;
+                g_system_state.force_weather_fetch = true;
+                printf("[btn_thread] Screen -> WEATHER\n");
+            } else {
+                g_system_state.current_screen = SCREEN_CLOCK;
+                printf("[btn_thread] Screen -> CLOCK\n");
+            }
+            pthread_cond_broadcast(&g_state_cond);
+            pthread_mutex_unlock(&g_state_mutex);
+        }
+    } else {
+        pthread_mutex_unlock(&g_state_mutex);
+    }
 }
 
 static void *btn_thread_func(void *arg)
@@ -176,60 +233,18 @@ static void *btn_thread_func(void *arg)
             uint64_t duration_ms = (release_timestamp_ns - press_timestamp_ns) / 1000000ULL;
             press_timestamp_ns = 0;
 
-            struct timespec ts_now;
-            clock_gettime(CLOCK_MONOTONIC, &ts_now);
-            uint64_t current_time_ms = (uint64_t)ts_now.tv_sec * 1000 + (ts_now.tv_nsec / 1000000);
+            /* Đồng nhất nguồn thời gian debounce trực tiếp từ kernel interrupt timestamp */
+            uint64_t current_release_ms = release_timestamp_ns / 1000000ULL;
 
             /* Lọc chống rung phần mềm (Software Debounce) */
-            if ((current_time_ms - last_release_time_ms) < BTN_SOFTWARE_DEBOUNCE_MS) {
+            if ((current_release_ms - last_release_time_ms) < BTN_SOFTWARE_DEBOUNCE_MS) {
                 printf("[btn_thread] Debounce: Ignored rapid click (<%dms)\n", BTN_SOFTWARE_DEBOUNCE_MS);
                 continue;
             }
-            last_release_time_ms = current_time_ms;
+            last_release_time_ms = current_release_ms;
 
-            /* Bọc toàn bộ logic kiểm tra và cập nhật trạng thái trong 1 lock nguyên tử duy nhất */
-            pthread_mutex_lock(&g_state_mutex);
-            net_mode_t current_net = g_system_state.net_mode;
-
-            /* Ngữ cảnh 0: Nhấn giữ >= 5000ms -> Chuyển đổi Soft AP / Station */
-            if (duration_ms >= BTN_LONG_PRESS_MIN_MS) {
-                printf("[btn_thread] LONG PRESS (%llu ms) -> Toggle SmartConfig\n", (unsigned long long)duration_ms);
-                g_system_state.alarm_ringing = false;
-                pthread_cond_broadcast(&g_state_cond);
-                pthread_mutex_unlock(&g_state_mutex);
-
-                if (current_net == MODE_STATION) {
-                    smartconfig_trigger_softap();
-                } else {
-                    smartconfig_trigger_station("", "");
-                }
-            }
-            /* Ngữ cảnh 1 & 2: Nhấn ngắn (50ms <= t < 5000ms) */
-            else if (duration_ms >= BTN_SHORT_PRESS_MIN_MS) {
-                printf("[btn_thread] SHORT PRESS (%llu ms)\n", (unsigned long long)duration_ms);
-                /* [P2-M9] Ưu tiên 1: Tắt còi báo thức ngay lập tức nếu đang kêu */
-                if (g_system_state.alarm_ringing) {
-                    g_system_state.alarm_ringing = false;
-                    pthread_cond_broadcast(&g_state_cond);
-                    pthread_mutex_unlock(&g_state_mutex);
-                    printf("[btn_thread] Alarm silenced by user.\n");
-                }
-                /* [P2-M6] Ưu tiên 2: Chuyển màn hình CLOCK <-> WEATHER */
-                else {
-                    if (g_system_state.current_screen == SCREEN_CLOCK) {
-                        g_system_state.current_screen = SCREEN_WEATHER;
-                        g_system_state.force_weather_fetch = true;
-                        printf("[btn_thread] Screen -> WEATHER\n");
-                    } else {
-                        g_system_state.current_screen = SCREEN_CLOCK;
-                        printf("[btn_thread] Screen -> CLOCK\n");
-                    }
-                    pthread_cond_broadcast(&g_state_cond);
-                    pthread_mutex_unlock(&g_state_mutex);
-                }
-            } else {
-                pthread_mutex_unlock(&g_state_mutex);
-            }
+            /* Xử lý hành động nút nhấn theo ma trận ưu tiên */
+            dispatch_button_action(duration_ms);
         }
     }
 
@@ -269,6 +284,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     signal(SIGUSR1, sigusr1_handler);
+    signal(SIGPIPE, SIG_IGN); /* Ignore SIGPIPE to avoid socket termination */
 
     system_state_init();
 
