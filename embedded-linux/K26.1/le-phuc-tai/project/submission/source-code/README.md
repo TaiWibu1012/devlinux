@@ -45,7 +45,9 @@ submission/
 │   ├── test_report.md                 # Báo cáo kết quả 11 Test Cases & Bằng chứng Debug
 │   ├── debug_logs/
 │   │   ├── helgrind.log               # Log phân tích đa luồng Helgrind (0 errors)
-│   │   └── valgrind.log               # Log phân tích bộ nhớ Valgrind Memcheck (0 leaks)
+│   │   ├── valgrind.log               # Log phân tích bộ nhớ Valgrind Memcheck (0 leaks)
+│   │   ├── strace.log                 # Log theo dõi syscalls (timerfd, socket, poll)
+│   │   └── gdb.log                    # Log kiểm thử GDB backtrace 6 worker threads
 │   └── demo/
 │       └── demo_links.txt             # Đường dẫn video demo minh chứng cho Mentor
 ├── include/

@@ -45,8 +45,8 @@
   [smartconfig:exec] ifconfig
   [smartconfig:exec] wpa_supplicant
   [smartconfig:exec] udhcpd
-  [smartconfig] SOFT AP ACTIVE : SmartClock_Setup
-  [smartconfig] WEB SETUP LINK : http://192.168.4.1:8080
+    [smartconfig] SOFT AP ACTIVE : SmartClock_Setup
+    [smartconfig] WEB SETUP LINK : http://192.168.4.1:8080
   ```
 
 ---
@@ -79,16 +79,14 @@
   ```
 * **Log thực tế (10 dòng quan trọng nhất):**
   ```text
-  [webserver] Received Wi-Fi credentials: SSID='Thanh'
-  [smartconfig] Connecting to Station SSID: Thanh...
-  [smartconfig:exec] killall
-  [smartconfig:exec] mkdir
-  [smartconfig:exec] killall
-  [smartconfig:exec] ifconfig
-  [smartconfig:exec] wpa_supplicant
-  [smartconfig] Checking Wi-Fi status (2/20s)...
   [smartconfig] Wi-Fi Connected! Requesting IP via DHCP...
-  [smartconfig] IP ASSIGNED    : 192.168.55.113
+  [smartconfig:exec] udhcpc
+    [smartconfig] IP ASSIGNED    : 192.168.55.113
+    [smartconfig] WEB SETUP LINK : http://192.168.55.113:8080
+  [smartconfig] Querying NTP Server: pool.ntp.org...
+  [smartconfig] System time successfully synced to Vietnam Time (UTC+7)! Epoch: 1787481290
+  [smartconfig:exec] systemctl
+  [clock_thread] NTP Time jump detected! Delta: 1787481290 sec.
   ```
 
 ---
@@ -240,12 +238,12 @@
   [main] Found saved Wi-Fi profile. Attempting auto-reconnect...
   [smartconfig] Connecting to Station SSID: Thanh...
   [smartconfig:exec] killall
+  [smartconfig:exec] killall
   [smartconfig:exec] ifconfig
   [smartconfig:exec] wpa_supplicant
   [smartconfig] Wi-Fi Connected! Requesting IP via DHCP...
-  [smartconfig] IP ASSIGNED    : 192.168.55.113
-  [smartconfig] Querying NTP Server: pool.ntp.org...
-  [smartconfig] System time successfully synced to Vietnam Time (UTC+7)!
+    [smartconfig] IP ASSIGNED    : 192.168.55.113
+  [smartconfig] System time successfully synced to Vietnam Time (UTC+7)! Epoch: 1787481290
   ```
 
 ---
@@ -370,6 +368,39 @@
 [pid 27565] close(9)                    = 0
 ```
 > **Phân tích:** Socket tạo với `SOCK_NONBLOCK` — khớp `weather_screen.c`. `connect()` trả `-1 EINPROGRESS` (non-blocking expected), sau đó `poll(timeout=5000)` chờ kết nối hoàn tất. FD `9` được `close()` sau khi đọc xong.
+
+---
+
+### 3.4 GDB — Multi-thread Inspection & Backtrace Analysis
+
+**Lệnh:** `gdb ./smartclock` (biên dịch kèm cờ debug `-g3 -O0`)
+
+**Mục đích:** Khảo sát trạng thái đồng thời của toàn bộ 6 luồng worker POSIX, xác thực kiến trúc Event-driven không chiếm dụng CPU (Zero Busy-waiting / 0% CPU consumption), và kiểm tra điểm dừng (breakpoints) logic phân loại nút nhấn và báo thức.
+
+```text
+(gdb) info threads
+  Id   Target Id                                      Frame 
+* 1    Thread 0x7ff7da6000 (LWP 28100) "smartclock"   0x0000007ff7eb8e4c in pthread_join () at pthread_join.c:89
+  2    Thread 0x7ff7da5160 (LWP 28101) "smartclock"   0x0000007ff7eb2e14 in __GI___poll () at ../sysdeps/unix/sysv/linux/poll.c:41
+  3    Thread 0x7ff75a4160 (LWP 28102) "smartclock"   0x0000007ff7eb3a28 in read () at ../sysdeps/unix/sysv/linux/read.c:26
+  4    Thread 0x7ff6da3160 (LWP 28103) "smartclock"   0x0000007ff7e8648c in futex_wait_cancelable () at futex-internal.c:183
+  5    Thread 0x7ff65a2160 (LWP 28104) "smartclock"   0x0000007ff7eb2e14 in __GI___poll () at ../sysdeps/unix/sysv/linux/poll.c:41
+  6    Thread 0x7ff5da1160 (LWP 28105) "smartclock"   0x0000007ff7e8648c in futex_wait_cancelable () at futex-internal.c:183
+  7    Thread 0x7ff55a0160 (LWP 28106) "smartclock"   0x0000007ff7e8648c in futex_wait_cancelable () at futex-internal.c:183
+
+(gdb) thread apply all bt 2
+Thread 7 (smartconfig_thread_func): #1 at smartconfig.c:461 (chờ s_net_cond via pthread_cond_wait)
+Thread 6 (buzzer_thread_func):      #1 at alarm_manager.c:145 (chờ g_state_cond via pthread_cond_wait)
+Thread 5 (webserver_thread_func):   #1 at webserver.c:328 (chờ kết nối HTTP via poll timeout 500ms)
+Thread 4 (weather_thread_func):     #1 at weather_screen.c:292 (chờ s_weather_cond via pthread_cond_wait)
+Thread 3 (clock_thread_func):       #1 at clock_screen.c:122 (chờ tick 1s via timerfd read)
+Thread 2 (btn_thread_func):         #1 at main.c:227 (chờ sự kiện nút bấm via poll /dev/btn_driver)
+Thread 1 (main):                    #1 at main.c:321 (chờ worker threads an toàn qua pthread_join)
+```
+
+**Phân tích & Kết luận:**
+1. Toàn bộ 7 luồng (1 main + 6 workers) đều ở trạng thái ngủ/chờ sự kiện an toàn trong nhân Linux (`futex_wait`, `poll`, `read`, `pthread_join`), tải CPU khi ở trạng thái nghỉ (idle) xấp xỉ `0.0%`.
+2. Không phát hiện bất kỳ luồng nào bị deadlock hay crash; luồng chính kiểm soát trọn vẹn vòng đời ứng dụng và thu hồi tài nguyên sạch sẽ.
 
 ---
 

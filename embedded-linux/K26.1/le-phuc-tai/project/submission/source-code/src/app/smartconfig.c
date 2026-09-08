@@ -355,7 +355,7 @@ static void execute_connect_station(const char *ssid, const char *password)
     char *const cmd_kill_ap[] = {"killall", "-9", "wpa_supplicant", "udhcpd", NULL};
     safe_exec(cmd_kill_ap);
 
-    if (strlen(ssid) > 0) {
+    if (strlen(ssid) > 0 && strlen(password) > 0) {
         write_wpa_supplicant_conf(ssid, password);
     }
 

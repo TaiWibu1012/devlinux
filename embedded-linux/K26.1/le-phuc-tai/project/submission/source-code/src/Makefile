@@ -5,12 +5,16 @@
 DRIVER_DIR = driver
 APP_DIR    = app
 
-.PHONY: all driver app clean install
+.PHONY: all driver app debug clean install
 
 all: driver app
 	@echo "=================================================="
 	@echo "  PROJECT 2 BUILD COMPLETED SUCCESSFULLY"
 	@echo "=================================================="
+
+debug:
+	@echo "--- [1/1] Building Userspace Application (Debug Mode) ---"
+	$(MAKE) -C $(APP_DIR) debug
 
 driver:
 	@echo "--- [1/2] Building Kernel Drivers ---"

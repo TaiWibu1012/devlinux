@@ -66,17 +66,32 @@ static void signal_handler(int sig)
 }
 
 /* Kiểm tra xem file wpa_supplicant.conf đã lưu cấu hình mạng từ trước hay chưa */
-static bool has_saved_wifi_config(void)
+static bool get_saved_wifi_ssid(char *out_ssid, size_t max_len)
 {
     FILE *fp = fopen(WPA_CONF_FILE, "r");
     if (!fp) return false;
 
     char buf[256];
     bool has_network = false;
+    if (out_ssid && max_len > 0) {
+        out_ssid[0] = '\0';
+    }
+
     while (fgets(buf, sizeof(buf), fp)) {
-        if (strstr(buf, "network={") || strstr(buf, "ssid=")) {
+        char *p_ssid = strstr(buf, "ssid=");
+        if (p_ssid) {
             has_network = true;
+            if (out_ssid && max_len > 0) {
+                p_ssid += 5;
+                if (*p_ssid == '"') p_ssid++;
+                size_t len = strcspn(p_ssid, "\"\r\n");
+                if (len >= max_len) len = max_len - 1;
+                strncpy(out_ssid, p_ssid, len);
+                out_ssid[len] = '\0';
+            }
             break;
+        } else if (strstr(buf, "network={")) {
+            has_network = true;
         }
     }
     fclose(fp);
@@ -106,10 +121,11 @@ void system_state_init(void)
     alarm_manager_load_config(ALARM_CONFIG_FILE, &g_system_state.alarm_config);
 
     /* Tự động nhận diện mạng khi khởi động */
-    if (has_saved_wifi_config()) {
+    char saved_ssid[64] = {0};
+    if (get_saved_wifi_ssid(saved_ssid, sizeof(saved_ssid))) {
         g_system_state.net_mode = MODE_STATION;
         printf("[main] Found saved Wi-Fi profile. Attempting auto-reconnect...\n");
-        smartconfig_trigger_station("", "");
+        smartconfig_trigger_station(saved_ssid, "");
     } else {
         g_system_state.net_mode = MODE_SOFT_AP;
         printf("[main] No Wi-Fi profile found. Starting Soft AP mode...\n");

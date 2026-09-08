@@ -24,6 +24,10 @@ OBJS = $(SRCS:.c=.o)
 
 .PHONY: all clean debug
 
+ifeq ($(DEBUG),1)
+CFLAGS += -g3 -O0 -DDEBUG
+endif
+
 all: $(TARGET)
 
 debug: CFLAGS += -g3 -O0 -DDEBUG

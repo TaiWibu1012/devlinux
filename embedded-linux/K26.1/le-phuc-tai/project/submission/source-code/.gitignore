@@ -11,6 +11,7 @@
 src/app/smartclock
 src/app/smartclock_debug
 *.log
+!docs/debug_logs/*.log
 *.logog
 
 # Temporary files

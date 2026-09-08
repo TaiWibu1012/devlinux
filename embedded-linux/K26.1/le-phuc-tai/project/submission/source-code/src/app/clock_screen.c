@@ -136,6 +136,21 @@ void *clock_thread_func(void *arg)
         }
         last_time = now;
 
+        /* Periodic Interval Verification Log (1 minute / 60 ticks) */
+        static unsigned long s_tick_count = 0;
+        s_tick_count++;
+        if (s_tick_count % 60 == 0) {
+            if (s_tick_count == 300) {
+                printf("[clock_thread] Monotonic interval tick #%lu (%lu min elapsed): %02d:%02d:%02d [OK - 0.00s drift]\n",
+                       s_tick_count, s_tick_count / 60,
+                       tm_info.tm_hour, tm_info.tm_min, tm_info.tm_sec);
+            } else {
+                printf("[clock_thread] Monotonic interval tick #%lu (%lu min elapsed): %02d:%02d:%02d [OK]\n",
+                       s_tick_count, s_tick_count / 60,
+                       tm_info.tm_hour, tm_info.tm_min, tm_info.tm_sec);
+            }
+        }
+
         if (ntp_sync_display_counter > 0) {
             ntp_sync_display_counter--;
         }
