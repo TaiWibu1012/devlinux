@@ -30,6 +30,7 @@
 #define BTN_SOFTWARE_DEBOUNCE_MS  250
 
 pthread_mutex_t g_state_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t  g_state_cond  = PTHREAD_COND_INITIALIZER;
 system_state_t  g_system_state;
 
 static pthread_t s_clock_tid;
@@ -37,6 +38,7 @@ static pthread_t s_weather_tid;
 static pthread_t s_webserver_tid;
 static pthread_t s_buzzer_tid;
 static pthread_t s_smartconfig_tid;
+static pthread_t s_btn_tid;
 
 static void sigusr1_handler(int sig)
 {
@@ -49,7 +51,10 @@ static void signal_handler(int sig)
     printf("\n[main] Caught signal %d. Shutting down system cleanly...\n", sig);
     pthread_mutex_lock(&g_state_mutex);
     g_system_state.running = false;
+    pthread_cond_broadcast(&g_state_cond);
     pthread_mutex_unlock(&g_state_mutex);
+
+    smartconfig_wakeup();
 
     /* Immediately interrupt blocking poll/read calls in all worker threads */
     if (s_clock_tid) pthread_kill(s_clock_tid, SIGUSR1);
@@ -57,6 +62,7 @@ static void signal_handler(int sig)
     if (s_webserver_tid) pthread_kill(s_webserver_tid, SIGUSR1);
     if (s_buzzer_tid) pthread_kill(s_buzzer_tid, SIGUSR1);
     if (s_smartconfig_tid) pthread_kill(s_smartconfig_tid, SIGUSR1);
+    if (s_btn_tid) pthread_kill(s_btn_tid, SIGUSR1);
 }
 
 /* Kiểm tra xem file wpa_supplicant.conf đã lưu cấu hình mạng từ trước hay chưa */
@@ -108,6 +114,7 @@ void system_state_init(void)
 
 void system_state_destroy(void)
 {
+    pthread_cond_destroy(&g_state_cond);
     pthread_mutex_destroy(&g_state_mutex);
 }
 
@@ -188,6 +195,7 @@ static void *btn_thread_func(void *arg)
             if (duration_ms >= BTN_LONG_PRESS_MIN_MS) {
                 printf("[btn_thread] LONG PRESS (%llu ms) -> Toggle SmartConfig\n", (unsigned long long)duration_ms);
                 g_system_state.alarm_ringing = false;
+                pthread_cond_broadcast(&g_state_cond);
                 pthread_mutex_unlock(&g_state_mutex);
 
                 if (current_net == MODE_STATION) {
@@ -202,6 +210,7 @@ static void *btn_thread_func(void *arg)
                 /* [P2-M9] Ưu tiên 1: Tắt còi báo thức ngay lập tức nếu đang kêu */
                 if (g_system_state.alarm_ringing) {
                     g_system_state.alarm_ringing = false;
+                    pthread_cond_broadcast(&g_state_cond);
                     pthread_mutex_unlock(&g_state_mutex);
                     printf("[btn_thread] Alarm silenced by user.\n");
                 }
@@ -215,6 +224,7 @@ static void *btn_thread_func(void *arg)
                         g_system_state.current_screen = SCREEN_CLOCK;
                         printf("[btn_thread] Screen -> CLOCK\n");
                     }
+                    pthread_cond_broadcast(&g_state_cond);
                     pthread_mutex_unlock(&g_state_mutex);
                 }
             } else {
@@ -243,10 +253,14 @@ int main(int argc, char *argv[])
         int devnull = open("/dev/null", O_WRONLY);
         if (devnull >= 0) {
             dup2(devnull, STDERR_FILENO);
+            dup2(devnull, STDOUT_FILENO);
             close(devnull);
         }
-        char *const lo_cmd[] = {"ifconfig", "lo", "127.0.0.1", "up", NULL};
-        execvp(lo_cmd[0], lo_cmd);
+        char *const lo_cmd_ip[] = {"ip", "link", "set", "lo", "up", NULL};
+        execvp(lo_cmd_ip[0], lo_cmd_ip);
+        /* Fallback if ip command is not present */
+        char *const lo_cmd_if[] = {"ifconfig", "lo", "127.0.0.1", "up", NULL};
+        execvp(lo_cmd_if[0], lo_cmd_if);
         _exit(0);
     } else if (lo_pid > 0) {
         waitpid(lo_pid, NULL, 0);
@@ -269,11 +283,10 @@ int main(int argc, char *argv[])
     pthread_create(&s_weather_tid, NULL, weather_thread_func, NULL);
     pthread_create(&s_clock_tid, NULL, clock_thread_func, NULL);
     pthread_create(&s_webserver_tid, NULL, webserver_thread_func, NULL);
-
-    /* Chạy bộ xử lý nút nhấn trên luồng chính */
-    btn_thread_func(NULL);
+    pthread_create(&s_btn_tid, NULL, btn_thread_func, NULL);
 
     /* Chờ toàn bộ worker threads kết thúc an toàn */
+    pthread_join(s_btn_tid, NULL);
     pthread_join(s_clock_tid, NULL);
     pthread_join(s_weather_tid, NULL);
     pthread_join(s_webserver_tid, NULL);

@@ -32,6 +32,7 @@
 static net_request_t s_pending_request = REQ_NET_NONE;
 static wifi_creds_t  s_pending_creds;
 static pthread_mutex_t s_net_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  s_net_cond  = PTHREAD_COND_INITIALIZER;
 
 /**
  * @brief Execute command directly via fork() + execvp() and waitpid() without shell overhead or zombies
@@ -103,7 +104,6 @@ static bool sync_ntp_time(const char *server_host)
     int sockfd = -1;
     uint8_t packet[NTP_PACKET_SIZE];
     struct sockaddr_in serv_addr;
-    struct hostent *server;
     struct timeval timeout = {3, 0}; /* 3 seconds timeout */
 
     printf("[smartconfig] Querying NTP Server: %s...\n", server_host);
@@ -120,12 +120,20 @@ static bool sync_ntp_time(const char *server_host)
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(NTP_PORT);
 
-    server = gethostbyname(server_host);
-    if (!server) {
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    char port_str[8];
+    snprintf(port_str, sizeof(port_str), "%d", NTP_PORT);
+
+    if (getaddrinfo(server_host, port_str, &hints, &res) != 0 || !res) {
         printf("[smartconfig] NTP DNS lookup failed. Falling back to IP %s...\n", NTP_FALLBACK_IP);
         serv_addr.sin_addr.s_addr = inet_addr(NTP_FALLBACK_IP);
     } else {
-        memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
+        memcpy(&serv_addr, res->ai_addr, res->ai_addrlen);
+        freeaddrinfo(res);
     }
 
     /* Construct standard NTP Request Packet (LI = 0, VN = 3, Mode = 3 Client) */
@@ -406,6 +414,7 @@ void smartconfig_trigger_softap(void)
 {
     pthread_mutex_lock(&s_net_mutex);
     s_pending_request = REQ_NET_START_SOFTAP;
+    pthread_cond_signal(&s_net_cond);
     pthread_mutex_unlock(&s_net_mutex);
 }
 
@@ -417,25 +426,45 @@ void smartconfig_trigger_station(const char *ssid, const char *password)
     s_pending_creds.ssid[sizeof(s_pending_creds.ssid) - 1] = '\0';
     strncpy(s_pending_creds.password, password, sizeof(s_pending_creds.password) - 1);
     s_pending_creds.password[sizeof(s_pending_creds.password) - 1] = '\0';
+    pthread_cond_signal(&s_net_cond);
+    pthread_mutex_unlock(&s_net_mutex);
+}
+
+void smartconfig_wakeup(void)
+{
+    pthread_mutex_lock(&s_net_mutex);
+    pthread_cond_broadcast(&s_net_cond);
     pthread_mutex_unlock(&s_net_mutex);
 }
 
 void *smartconfig_thread_func(void *arg)
 {
     (void)arg;
+    printf("[smartconfig] Worker thread started.\n");
+
     while (1) {
-        usleep(200 * 1000);
+        net_request_t req = REQ_NET_NONE;
+        wifi_creds_t creds;
+
+        pthread_mutex_lock(&s_net_mutex);
+        while (s_pending_request == REQ_NET_NONE) {
+            pthread_mutex_lock(&g_state_mutex);
+            bool is_running = g_system_state.running;
+            pthread_mutex_unlock(&g_state_mutex);
+            if (!is_running) break;
+
+            pthread_cond_wait(&s_net_cond, &s_net_mutex);
+        }
 
         pthread_mutex_lock(&g_state_mutex);
         bool is_running = g_system_state.running;
         pthread_mutex_unlock(&g_state_mutex);
 
-        if (!is_running) break;
+        if (!is_running && s_pending_request == REQ_NET_NONE) {
+            pthread_mutex_unlock(&s_net_mutex);
+            break;
+        }
 
-        net_request_t req = REQ_NET_NONE;
-        wifi_creds_t creds;
-
-        pthread_mutex_lock(&s_net_mutex);
         req = s_pending_request;
         creds = s_pending_creds;
         s_pending_request = REQ_NET_NONE;
@@ -447,5 +476,7 @@ void *smartconfig_thread_func(void *arg)
             execute_connect_station(creds.ssid, creds.password);
         }
     }
+
+    printf("[smartconfig] Thread safely terminated.\n");
     return NULL;
 }

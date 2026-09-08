@@ -18,6 +18,7 @@
 #include <linux/ktime.h>
 #include <linux/spinlock.h>
 #include <linux/poll.h>
+#include <linux/version.h>
 
 #include "../../include/smartclock_common.h"
 
@@ -195,7 +196,11 @@ static int btn_probe(struct platform_device *pdev)
     }
 
     /* 4. Create sysfs class & device node (/dev/btn_driver) */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
     btn_data.dev_class = class_create(CLASS_NAME);
+#else
+    btn_data.dev_class = class_create(THIS_MODULE, CLASS_NAME);
+#endif
     if (IS_ERR(btn_data.dev_class)) {
         dev_err(dev, "Failed to create class\n");
         ret = PTR_ERR(btn_data.dev_class);

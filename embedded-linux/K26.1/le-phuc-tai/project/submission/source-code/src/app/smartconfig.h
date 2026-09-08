@@ -38,4 +38,9 @@ void smartconfig_trigger_station(const char *ssid, const char *password);
  */
 void *smartconfig_thread_func(void *arg);
 
+/**
+ * @brief Wake up smartconfig worker thread (used during clean system shutdown)
+ */
+void smartconfig_wakeup(void);
+
 #endif /* _SMARTCONFIG_H_ */

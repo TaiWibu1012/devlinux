@@ -58,8 +58,9 @@ typedef struct {
     bool            running;
 } system_state_t;
 
-/* Global Mutex protecting the shared state */
+/* Global Mutex and Condition Variable protecting and signaling shared state */
 extern pthread_mutex_t g_state_mutex;
+extern pthread_cond_t  g_state_cond;
 extern system_state_t  g_system_state;
 
 /* State helper functions */

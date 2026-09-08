@@ -16,6 +16,7 @@
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
 #include <linux/spinlock.h>
+#include <linux/version.h>
 
 #define DRIVER_NAME         "buzzer_driver"
 #define CLASS_NAME          "smartclock_buzzer"
@@ -172,7 +173,11 @@ static int buzzer_probe(struct platform_device *pdev)
     }
 
     /* 4. Create sysfs class & device node (/dev/buzzer_driver) */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
     buzzer_data.dev_class = class_create(CLASS_NAME);
+#else
+    buzzer_data.dev_class = class_create(THIS_MODULE, CLASS_NAME);
+#endif
     if (IS_ERR(buzzer_data.dev_class)) {
         dev_err(dev, "Failed to create class\n");
         ret = PTR_ERR(buzzer_data.dev_class);

@@ -163,7 +163,26 @@ static void handle_client_request(int client_fd)
     }
 
     char *body = strstr(request_buf, "\r\n\r\n");
-    if (body) body += 4;
+    if (body) {
+        body += 4;
+        /* Nếu là POST, kiểm tra Content-Length và gom đủ dữ liệu body nếu bị phân mảnh TCP */
+        if (strcmp(method, "POST") == 0) {
+            char *cl_pos = strstr(request_buf, "Content-Length:");
+            if (!cl_pos) cl_pos = strstr(request_buf, "content-length:");
+            if (cl_pos) {
+                int content_len = atoi(cl_pos + 15);
+                size_t header_len = (size_t)(body - request_buf);
+                size_t cur_body_len = (size_t)bytes_read - header_len;
+                while (cur_body_len < (size_t)content_len && bytes_read < (ssize_t)(sizeof(request_buf) - 1)) {
+                    ssize_t n = read(client_fd, request_buf + bytes_read, sizeof(request_buf) - 1 - bytes_read);
+                    if (n <= 0) break;
+                    bytes_read += n;
+                    request_buf[bytes_read] = '\0';
+                    cur_body_len += n;
+                }
+            }
+        }
+    }
 
 /* 1. Route: GET /weather (Mock Weather Endpoint) */
     if (strcmp(method, "GET") == 0 && strcmp(path, "/weather") == 0) {

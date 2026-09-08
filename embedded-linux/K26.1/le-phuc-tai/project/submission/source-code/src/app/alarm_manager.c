@@ -116,6 +116,7 @@ void alarm_manager_check(const struct tm *tm_info)
         if (g_system_state.last_triggered_minute != tm_info->tm_min) {
             g_system_state.last_triggered_minute = tm_info->tm_min;
             g_system_state.alarm_ringing = true;
+            pthread_cond_broadcast(&g_state_cond);
 
             printf("[alarm_manager] ALARM TRIGGERED! Time: %02d:%02d:00\n",
                    tm_info->tm_hour, tm_info->tm_min);
@@ -134,6 +135,16 @@ void *buzzer_thread_func(void *arg)
 
     while (1) {
         pthread_mutex_lock(&g_state_mutex);
+        /* Block and sleep on condition variable when idle, avoiding continuous polling */
+        while (g_system_state.running && !g_system_state.alarm_ringing) {
+            if (bz_fd >= 0) {
+                if (write(bz_fd, "0", 1) < 0) perror("buzzer write off");
+                close(bz_fd);
+                bz_fd = -1;
+            }
+            pthread_cond_wait(&g_state_cond, &g_state_mutex);
+        }
+
         bool is_running = g_system_state.running;
         bool should_ring = g_system_state.alarm_ringing;
         pthread_mutex_unlock(&g_state_mutex);
@@ -166,15 +177,6 @@ void *buzzer_thread_func(void *arg)
                 if (write(bz_fd, "0", 1) < 0) perror("buzzer write off");
                 usleep(500 * 1000);
             }
-        } else {
-            /* Turn off buzzer and close file descriptor when idle */
-            if (bz_fd >= 0) {
-                if (write(bz_fd, "0", 1) < 0) perror("buzzer write off");
-                close(bz_fd);
-                bz_fd = -1;
-            }
-            /* Sleep idle cycle */
-            usleep(200 * 1000);
         }
     }
 

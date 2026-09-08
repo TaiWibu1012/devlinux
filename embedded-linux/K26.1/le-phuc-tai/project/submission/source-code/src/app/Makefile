@@ -22,9 +22,12 @@ SRCS = main.c \
 # Object files
 OBJS = $(SRCS:.c=.o)
 
-.PHONY: all clean
+.PHONY: all clean debug
 
 all: $(TARGET)
+
+debug: CFLAGS += -g3 -O0 -DDEBUG
+debug: clean $(TARGET)
 
 $(TARGET): $(OBJS)
 	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS)

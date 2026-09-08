@@ -241,21 +241,26 @@ void ssd1306_update(void)
     pthread_mutex_unlock(&s_oled_mutex);
 }
 
-void ssd1306_draw_pixel(int x, int y, uint8_t color)
+static inline void ssd1306_draw_pixel_unlocked(int x, int y, uint8_t color)
 {
     if (x < 0 || x >= SSD1306_WIDTH || y < 0 || y >= SSD1306_HEIGHT) return;
 
-    ensure_mutex_initialized();
-    pthread_mutex_lock(&s_oled_mutex);
     if (color) {
         s_oled_buffer[x + (y / 8) * SSD1306_WIDTH] |= (1 << (y % 8));
     } else {
         s_oled_buffer[x + (y / 8) * SSD1306_WIDTH] &= ~(1 << (y % 8));
     }
+}
+
+void ssd1306_draw_pixel(int x, int y, uint8_t color)
+{
+    ensure_mutex_initialized();
+    pthread_mutex_lock(&s_oled_mutex);
+    ssd1306_draw_pixel_unlocked(x, y, color);
     pthread_mutex_unlock(&s_oled_mutex);
 }
 
-void ssd1306_draw_char(int x, int y, char c, uint8_t size)
+static void ssd1306_draw_char_unlocked(int x, int y, char c, uint8_t size)
 {
     if (c < 32 || c > 122) c = ' ';
     const uint8_t *char_map = FONT_5X7[c - 32];
@@ -265,11 +270,11 @@ void ssd1306_draw_char(int x, int y, char c, uint8_t size)
         for (int j = 0; j < 8; j++) {
             if (line & 0x01) {
                 if (size == 1) {
-                    ssd1306_draw_pixel(x + i, y + j, 1);
+                    ssd1306_draw_pixel_unlocked(x + i, y + j, 1);
                 } else {
                     for (int sx = 0; sx < size; sx++) {
                         for (int sy = 0; sy < size; sy++) {
-                            ssd1306_draw_pixel(x + (i * size) + sx, y + (j * size) + sy, 1);
+                            ssd1306_draw_pixel_unlocked(x + (i * size) + sx, y + (j * size) + sy, 1);
                         }
                     }
                 }
@@ -279,20 +284,34 @@ void ssd1306_draw_char(int x, int y, char c, uint8_t size)
     }
 }
 
+void ssd1306_draw_char(int x, int y, char c, uint8_t size)
+{
+    ensure_mutex_initialized();
+    pthread_mutex_lock(&s_oled_mutex);
+    ssd1306_draw_char_unlocked(x, y, c, size);
+    pthread_mutex_unlock(&s_oled_mutex);
+}
+
 void ssd1306_draw_string(int x, int y, const char *str, uint8_t size)
 {
     if (!str) return;
+    ensure_mutex_initialized();
+    pthread_mutex_lock(&s_oled_mutex);
     int cursor_x = x;
     while (*str) {
-        ssd1306_draw_char(cursor_x, y, *str, size);
+        ssd1306_draw_char_unlocked(cursor_x, y, *str, size);
         cursor_x += (5 * size) + size;
         str++;
     }
+    pthread_mutex_unlock(&s_oled_mutex);
 }
 
 void ssd1306_draw_hline(int x, int y, int length, uint8_t color)
 {
+    ensure_mutex_initialized();
+    pthread_mutex_lock(&s_oled_mutex);
     for (int i = 0; i < length; i++) {
-        ssd1306_draw_pixel(x + i, y, color);
+        ssd1306_draw_pixel_unlocked(x + i, y, color);
     }
+    pthread_mutex_unlock(&s_oled_mutex);
 }

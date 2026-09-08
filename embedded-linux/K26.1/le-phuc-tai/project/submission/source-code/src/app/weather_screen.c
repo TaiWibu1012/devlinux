@@ -282,37 +282,44 @@ void *weather_thread_func(void *arg)
     printf("[weather_thread] Worker thread started.\n");
 
     while (1) {
-        usleep(200 * 1000);
-
         pthread_mutex_lock(&g_state_mutex);
-        bool is_running = g_system_state.running;
-        screen_mode_t cur_screen = g_system_state.current_screen;
+
+        /* Wait until running is false OR we are in SCREEN_WEATHER OR force_weather_fetch is requested */
+        while (g_system_state.running && 
+               g_system_state.current_screen != SCREEN_WEATHER && 
+               !g_system_state.force_weather_fetch) {
+            pthread_cond_wait(&g_state_cond, &g_state_mutex);
+        }
+
+        if (!g_system_state.running) {
+            pthread_mutex_unlock(&g_state_mutex);
+            break;
+        }
+
         bool force_fetch = g_system_state.force_weather_fetch;
         if (force_fetch) {
             g_system_state.force_weather_fetch = false;
         }
-        pthread_mutex_unlock(&g_state_mutex);
-
-        if (!is_running) break;
 
         time_t now = time(NULL);
         bool need_fetch = false;
-        if (cur_screen == SCREEN_WEATHER) {
+        if (g_system_state.current_screen == SCREEN_WEATHER) {
             if (force_fetch || (last_fetch_time == 0) || (now - last_fetch_time >= WEATHER_REFRESH_SEC)) {
                 need_fetch = true;
             }
         }
+        pthread_mutex_unlock(&g_state_mutex);
 
         if (need_fetch) {
             printf("[weather_thread] Querying Mock Weather Server...\n");
-            last_fetch_time = now;
+            last_fetch_time = time(NULL);
 
             bool ok = fetch_http_weather(&fetched_data);
 
             pthread_mutex_lock(&g_state_mutex);
             if (ok) {
                 g_system_state.weather_data = fetched_data;
-                g_system_state.weather_data.last_update_ts = (uint64_t)now;
+                g_system_state.weather_data.last_update_ts = (uint64_t)last_fetch_time;
                 printf("[weather_thread] Data updated: %.1f C, %s\n",
                        fetched_data.temperature, fetched_data.condition);
             } else {
@@ -321,6 +328,16 @@ void *weather_thread_func(void *arg)
             }
             pthread_mutex_unlock(&g_state_mutex);
         }
+
+        /* Wait for next 5-minute refresh cycle or user event (screen toggle / shutdown) */
+        pthread_mutex_lock(&g_state_mutex);
+        if (g_system_state.running && g_system_state.current_screen == SCREEN_WEATHER && !g_system_state.force_weather_fetch) {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += WEATHER_REFRESH_SEC;
+            pthread_cond_timedwait(&g_state_cond, &g_state_mutex, &ts);
+        }
+        pthread_mutex_unlock(&g_state_mutex);
     }
 
     printf("[weather_thread] Thread safely terminated.\n");
