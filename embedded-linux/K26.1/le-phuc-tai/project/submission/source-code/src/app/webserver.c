@@ -255,6 +255,12 @@ static void handle_client_request(int client_fd)
 
             pthread_mutex_lock(&g_state_mutex);
             g_system_state.alarm_config = new_cfg;
+            g_system_state.last_triggered_minute = -1;
+            if (!new_cfg.enabled && g_system_state.alarm_ringing) {
+                g_system_state.alarm_ringing = false;
+                pthread_cond_broadcast(&g_state_cond);
+            }
+            alarm_manager_clear_state();
             pthread_mutex_unlock(&g_state_mutex);
 
             printf("[webserver] Updated Alarm: %02d:%02d (Enabled: %d)\n",

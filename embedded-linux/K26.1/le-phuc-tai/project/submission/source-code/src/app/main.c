@@ -110,7 +110,14 @@ void system_state_init(void)
     pthread_mutex_lock(&g_state_mutex);
     g_system_state.current_screen = SCREEN_CLOCK;
     g_system_state.alarm_ringing = false;
-    g_system_state.last_triggered_minute = -1;
+    time_t now_init = time(NULL);
+    struct tm tm_init;
+    localtime_r(&now_init, &tm_init);
+    if (alarm_manager_is_already_handled(&tm_init)) {
+        g_system_state.last_triggered_minute = tm_init.tm_min;
+    } else {
+        g_system_state.last_triggered_minute = -1;
+    }
     g_system_state.force_weather_fetch = false;
     g_system_state.running = true;
 
@@ -153,6 +160,12 @@ static void dispatch_button_action(uint64_t duration_ms)
     /* Ngữ cảnh 0: Nhấn giữ >= 5000ms -> Chuyển đổi Soft AP / Station */
     if (duration_ms >= BTN_LONG_PRESS_MIN_MS) {
         printf("[btn_thread] LONG PRESS (%llu ms) -> Toggle SmartConfig\n", (unsigned long long)duration_ms);
+        if (g_system_state.alarm_ringing) {
+            time_t now = time(NULL);
+            struct tm tm_now;
+            localtime_r(&now, &tm_now);
+            alarm_manager_record_state(&tm_now, true);
+        }
         g_system_state.alarm_ringing = false;
         pthread_cond_broadcast(&g_state_cond);
         pthread_mutex_unlock(&g_state_mutex);
@@ -169,6 +182,10 @@ static void dispatch_button_action(uint64_t duration_ms)
         /* [P2-M9] Ưu tiên 1: Tắt còi báo thức ngay lập tức nếu đang kêu */
         if (g_system_state.alarm_ringing) {
             g_system_state.alarm_ringing = false;
+            time_t now = time(NULL);
+            struct tm tm_now;
+            localtime_r(&now, &tm_now);
+            alarm_manager_record_state(&tm_now, true);
             pthread_cond_broadcast(&g_state_cond);
             pthread_mutex_unlock(&g_state_mutex);
             printf("[btn_thread] Alarm silenced by user.\n");

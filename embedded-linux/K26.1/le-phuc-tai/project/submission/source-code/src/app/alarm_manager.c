@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <sys/stat.h>
 
 #define DEFAULT_ALARM_HOUR      7
 #define DEFAULT_ALARM_MINUTE    0
@@ -91,6 +92,89 @@ int alarm_manager_save_config_atomic(const char *config_path, const alarm_config
     return 0;
 }
 
+/* Helper to write state to a specific path */
+static bool write_state_to_file(const char *path, const struct tm *tm_info, bool silenced)
+{
+    FILE *fp = fopen(path, "w");
+    if (!fp) return false;
+
+    fprintf(fp, "year=%d\nmonth=%d\nday=%d\nhour=%d\nminute=%d\nsilenced=%d\n",
+            tm_info->tm_year + 1900,
+            tm_info->tm_mon + 1,
+            tm_info->tm_mday,
+            tm_info->tm_hour,
+            tm_info->tm_min,
+            silenced ? 1 : 0);
+
+    fflush(fp);
+    fsync(fileno(fp));
+    fclose(fp);
+    return true;
+}
+
+/* Helper to read and verify handled state from a specific path */
+static bool check_state_from_file(const char *path, const struct tm *tm_info)
+{
+    FILE *fp = fopen(path, "r");
+    if (!fp) return false;
+
+    char line[64];
+    int year = 0, month = 0, day = 0, hour = -1, min = -1, silenced = 0;
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (sscanf(line, "year=%d", &year) == 1) continue;
+        if (sscanf(line, "month=%d", &month) == 1) continue;
+        if (sscanf(line, "day=%d", &day) == 1) continue;
+        if (sscanf(line, "hour=%d", &hour) == 1) continue;
+        if (sscanf(line, "minute=%d", &min) == 1) continue;
+        if (sscanf(line, "silenced=%d", &silenced) == 1) continue;
+    }
+    fclose(fp);
+
+    if (year == (tm_info->tm_year + 1900) &&
+        month == (tm_info->tm_mon + 1) &&
+        day == tm_info->tm_mday &&
+        hour == tm_info->tm_hour &&
+        min == tm_info->tm_min) {
+        return true;
+    }
+
+    return false;
+}
+
+/* Record alarm trigger or silence event into persistent state */
+void alarm_manager_record_state(const struct tm *tm_info, bool silenced)
+{
+    if (!tm_info) return;
+
+    mkdir("/etc/smartclock", 0755);
+
+    /* Try primary persistent path first (/etc/smartclock/alarm.state) */
+    if (!write_state_to_file(ALARM_STATE_FILE, tm_info, silenced)) {
+        /* Fall back to /tmp if primary fails (e.g. non-root permissions or dev test) */
+        write_state_to_file(ALARM_STATE_FALLBACK_FILE, tm_info, silenced);
+    }
+}
+
+/* Check if current minute has already been handled (triggered/silenced) today */
+bool alarm_manager_is_already_handled(const struct tm *tm_info)
+{
+    if (!tm_info) return false;
+
+    if (check_state_from_file(ALARM_STATE_FILE, tm_info)) {
+        return true;
+    }
+
+    return check_state_from_file(ALARM_STATE_FALLBACK_FILE, tm_info);
+}
+
+/* Clear persistent alarm state (called when user saves a new alarm on Web) */
+void alarm_manager_clear_state(void)
+{
+    unlink(ALARM_STATE_FILE);
+    unlink(ALARM_STATE_FALLBACK_FILE);
+}
+
 /* [P2-M8] Check current system time against configured alarm and trigger buzzer */
 void alarm_manager_check(const struct tm *tm_info)
 {
@@ -114,8 +198,16 @@ void alarm_manager_check(const struct tm *tm_info)
     /* Check if current hour & minute match alarm schedule */
     if (tm_info->tm_hour == cfg.hour && tm_info->tm_min == cfg.minute) {
         if (g_system_state.last_triggered_minute != tm_info->tm_min) {
+            /* Prevent re-triggering if already handled (silenced or fired) in this exact minute */
+            if (alarm_manager_is_already_handled(tm_info)) {
+                g_system_state.last_triggered_minute = tm_info->tm_min;
+                pthread_mutex_unlock(&g_state_mutex);
+                return;
+            }
+
             g_system_state.last_triggered_minute = tm_info->tm_min;
             g_system_state.alarm_ringing = true;
+            alarm_manager_record_state(tm_info, false);
             pthread_cond_broadcast(&g_state_cond);
 
             printf("[alarm_manager] ALARM TRIGGERED! Time: %02d:%02d:00\n",
